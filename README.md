@@ -4,7 +4,7 @@ Python code to perform free surface profilometry with synthetic schlieren imagin
 
 ## pydata
 
-Functions for image processing and video processing
+Functions for image processing and video processing. Most of the code was inherited from: github.com/trapped-modes-ltg/fcd-analysis
 
 ## Aux
 
