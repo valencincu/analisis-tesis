@@ -45,7 +45,7 @@ print("Displaced images directory:", displaced_images_path)
 
 # %% EXPORT PATH SETUP
 current_dir  = Path(os.path.dirname(os.path.realpath(__file__)))
-export_dir   = current_dir / "analysis"
+export_dir   = current_dir / "analyzed" / "fcd"
 
 save_dir = export_dir.joinpath(import_dir.name + " - " + job_id)
 save_dir.mkdir(parents=True, exist_ok=False)
