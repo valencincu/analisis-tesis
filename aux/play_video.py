@@ -44,9 +44,7 @@ for i, frame in enumerate(height_maps):
     out.write((255*normalize_image(frame)).astype(np.uint8))
 
 plt.ioff()
+plt.close()
 
 out.release()
 f.close()
- 
-
- 

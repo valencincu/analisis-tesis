@@ -92,7 +92,6 @@ class ROI:
     def yf(self):
         return self.limits[3]
 
-
     def reset(self):
         height, width = self._region
         rect = (0, 0, width, height)

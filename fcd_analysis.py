@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots
 
-from glob import glob
 from matplotlib import use as matplotlib_backend
 from pathlib import Path
 from shutil import copyfile
@@ -60,8 +59,9 @@ roi       = ROI(video.current_frame, select=True).square()
 step      = 4
 
 # %% PHYSICAL PARAMETERS
-square_size = 2e-3 # m
 alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
+
+H  = 80e-2  # m (distance between camera and pattern)
 
 layers = [
     Layer(2.2e-2, "Air"), 
@@ -69,12 +69,14 @@ layers = [
     Layer(8.1e-2, "Water")
 ]
 
-H  = 72e-2  # m (distance between camera and pattern)
 hp =  np.sum([layer.effective_height(refractive_indexes["Water"]) for layer in layers])
 
-effective_height = alpha*hp
+parallax_correction = (1 - hp / H)
+square_size = 2e-3 * parallax_correction # m
+effective_height =  1 / (1 / (alpha*hp) - 1 / H)
 
 # %% FCD SETUP
+
 fcd = FCD(
     reference.cropped(roi=roi),
     square_size=square_size, 
@@ -95,17 +97,16 @@ user_input = input("NOTES:\n")
 notes = f"""NOTES:\n{user_input}\nROI:{str(roi)}
 """
 
-preprocess_string = open("fcd-analysis.py", "r").read()
+preprocess_string = open("fcd_analysis.py", "r").read()
 data = ("\n---\n".join([notes, path_string, preprocess_string]));
 notes_path.write_text(data)
 
 # %% ANALYZE
 f = h5py.File(save_dir / "height_maps.hdf5", "w")
 height_maps = f.create_dataset("height_maps", (video.length // step, *roi.shape), dtype=np.float16)
-f.create_dataset("fps", data=(video.fps,), dtype=np.float16)
-f.create_dataset("calibration_factor", data=(fcd.calibration_factor,))
+f.create_dataset("fps", data=(video.fps / step,), dtype=np.float16)
+f.create_dataset("px_to_m", data=(fcd.calibration_factor,))
 f.create_dataset("effective_height", data=(fcd.effective_height,))
-f.create_dataset("step", data=(step,))
 
 # %% PLOT
 cm = 1/2.54

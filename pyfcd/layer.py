@@ -1,6 +1,6 @@
 import warnings
 
-refractive_indexes = {"Air": 1.0003, "Glass": 1.5, "Acrylic": 1.48899, "Water": 1.34}
+refractive_indexes = {"Air": 1.000, "Glass": 1.5, "Acrylic": 1.48899, "Water": 1.33}
 
 
 class Layer:

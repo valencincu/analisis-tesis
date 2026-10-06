@@ -100,7 +100,7 @@ class Image(np.ndarray):
 
     def correlate(self, template, image=None):
         correlation_map = cv2.matchTemplate(self, template, method=cv2.TM_CCORR_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(correlation_map)
+        _, _, _, max_loc = cv2.minMaxLoc(correlation_map)
         return max_loc
 
     def normalized(self, scale=1, offset=0, astype=np.float64):
@@ -112,7 +112,7 @@ class Image(np.ndarray):
 
     def show(self, axis=None, show_plot=True):
         if axis is None:
-            fig, axis = plt.subplots()
+            _, axis = plt.subplots()
         axis.imshow(self)
         if show_plot: plt.show()
 

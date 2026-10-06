@@ -1,4 +1,5 @@
 #%% SELECT DATA DIRECTORY
+import os
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 from pathlib import Path
@@ -31,8 +32,9 @@ reference_image = Image(image_path=reference_image_path)
 roi             = ROI(displaced_image, select=True).square()
 
 # %% PHYSICAL PARAMETERS
-square_size = 2e-3 # m
 alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
+
+H  = 80e-2  # m (distance between camera and pattern)
 
 layers = [
     Layer(2.2e-2, "Air"), 
@@ -40,10 +42,11 @@ layers = [
     Layer(8.1e-2, "Water")
 ]
 
-H  = 72e-2  # m (distance between camera and pattern)
 hp =  np.sum([layer.effective_height(refractive_indexes["Water"]) for layer in layers])
 
-effective_height = (1 / (alpha*hp) + 1 / H)**(-1)
+parallax_correction = (1 - hp / H)
+square_size = 2e-3 * parallax_correction # m
+effective_height =  1 / (1 / (alpha*hp) - 1 / H)
 
 # %% FCD SETUP
 fcd = FCD(
@@ -57,19 +60,22 @@ height_field = fcd.analyze(displaced_image.cropped(roi=roi), full_output=False)
 
 # %% PLOT
 cm = 1/2.54
-plt.style.use("science")
 
-fig, axs = plt.subplots(2, 1, figsize=(8.5*cm, 20*cm))
-fig.tight_layout(pad=2)
+x = np.arange(0, height_field.shape[1]) * fcd.calibration_factor
+y = np.arange(0, height_field.shape[1]) * fcd.calibration_factor
+X, Y = np.meshgrid(x, y)
 
-axs[0].imshow(displaced_image.cropped(roi=roi), cmap="Greys_r")
-axs[0].axis("off")
+fig, axs = plt.subplots(2, 1, figsize=(8.5*cm, 20*cm), dpi=200)
+fig.tight_layout(pad=1)
 
-im = axs[1].imshow(height_field*1e3, cmap="RdBu")
-axs[1].axis("off")
+axs[0].pcolormesh(X, Y, displaced_image.cropped(roi=roi), cmap="Greys_r", rasterized=True)
+axs[0].set_aspect("equal")
+
+im = axs[1].pcolormesh(X, Y, height_field*1e3, cmap="RdBu", rasterized=True)
+axs[1].set_aspect("equal")
 plt.colorbar(im, label="Altura [mm]", ax=axs[1], orientation='horizontal')
 
-plt.savefig("fcd.pdf", dpi=200)
+plt.savefig("analyzed" + os.sep + "fcd.pdf", dpi=200)
 plt.show()
 
 
