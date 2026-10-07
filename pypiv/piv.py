@@ -5,35 +5,12 @@ import h5py
 
 from openpiv.filters import replace_outliers
 from openpiv.pyprocess import extended_search_area_piv, get_coordinates
-from openpiv.preprocess import contrast_stretch, high_pass, intensity_clip
-from openpiv.validation import sig2noise_val, local_norm_median_val, local_median_val, global_std
+from openpiv import preprocess
+from openpiv import validation
+from pyaux.helpers import animatable, saveable
 
 from matplotlib import use as matplotlib_backend
 matplotlib_backend("TkAgg")
-
-def _animatable(animate_func):
-    """animate_func: name of a method on the class that draws the results."""
-    def decorator(f):
-        @functools.wraps(f)
-        def wrapper(self, *args, animate=False, **kwargs):
-            gen = f(self, *args, **kwargs)
-            if not animate:
-                return gen
-            return getattr(self, animate_func)(gen)
-        return wrapper
-    return decorator
-
-def _saveable(save_func):
-    """save_func: name of a method on the class that saves the results."""
-    def decorator(f):
-        @functools.wraps(f)
-        def wrapper(self, *args, save_at=None, **kwargs):
-            gen = f(self, *args, **kwargs)
-            if save_at == None:
-                return gen
-            return getattr(self, save_func)(gen, save_at)
-        return wrapper
-    return decorator
 
 class PIV:
     def __init__(self, video, fps, interval=1, window_size=16, search_size=20, overlap=8, to_distance=1, sig2noise_threshold=2, filter_func=None):
@@ -47,15 +24,15 @@ class PIV:
         self.overlap     = overlap
 
         self._to_distance = to_distance
-        self._to_time     = 1 / fps * 1000
+        self._to_time     = 1 / fps
 
         self.threshold    = sig2noise_threshold
         self.filter_func  = filter_func if filter_func != None else lambda x: np.zeros_like(x)
 
         self.x, self.y   = self._generate_coordinates()
 
-    @_saveable("_save")
-    @_animatable("_animate")
+    @saveable("_save")
+    @animatable("_animate")
     def run(self, start=0, stop=None, step=1):
         stop = len(self.video) - self.interval if stop == None else stop
         for frame_index in range(start, stop, step):
@@ -76,7 +53,7 @@ class PIV:
             sig2noise_method="peak2peak"
         )
 
-        flags_s2n = sig2noise_val(sig2noise, threshold=self.threshold)
+        flags_s2n = validation.sig2noise_val(sig2noise, threshold=self.threshold)
 
         u2, v2 = replace_outliers(
             u1, v1,
@@ -142,28 +119,28 @@ class PIV:
         return x * self._to_distance, y * self._to_distance
 
     def _save(self, gen, save_at):
-        f    = h5py.File(str(save_at) + ".hdf5", "w")
-        f.create_dataset("x", data=self.x)
-        f.create_dataset("y", data=self.y)
-        us = f.create_dataset("u [m/s]", shape=(0, *self.x.shape), maxshape=(len(self.video), *self.x.shape))
-        vs = f.create_dataset("v [m/s]", shape=(0, *self.x.shape), maxshape=(len(self.video), *self.x.shape))  
-        ts = f.create_dataset(  "t [ms]", shape=(0, 1), maxshape=(len(self.video), 1))
-    
-        i = 0
-        for t, u, v in gen:
-            us.resize(i+1, axis=0)
-            vs.resize(i+1, axis=0)
-            ts.resize(i+1, axis=0)
+        length = len(self.video)
+        shape  = self.x.shape
+        with h5py.File(str(save_at) + ".hdf5", "w") as f:
+            f.create_dataset("x [m]", data=self.x)
+            f.create_dataset("y [m]", data=self.y)
+            us = f.create_dataset("u [m/s]", shape=(0, *shape), maxshape=(length, *shape), chunks=(1, *shape))
+            vs = f.create_dataset("v [m/s]", shape=(0, *shape), maxshape=(length, *shape), chunks=(1, *shape))  
+            ts = f.create_dataset("t [s]", shape=(0,), maxshape=(length,), dtype=np.float64)
+        
+            i = 0
+            for t, u, v in gen:
+                us.resize(i+1, axis=0)
+                vs.resize(i+1, axis=0)
+                ts.resize(i+1, axis=0)
 
-            us[i] = u
-            vs[i] = v
-            ts[i] = t
+                us[i] = u
+                vs[i] = v
+                ts[i] = t
 
-            i += 1
+                i += 1
 
-            yield t, u, v
-
-        return None
+                yield t, u, v
 
     def _animate(self, gen):
         plt.ion()
@@ -172,7 +149,7 @@ class PIV:
         for t, u, v in gen:
             ax.clear()
 
-            ax.set_title(f"{t} ms")
+            ax.set_title(f"{t} s")
             self.plot(u, v, ax=ax)
 
             fig.canvas.draw()

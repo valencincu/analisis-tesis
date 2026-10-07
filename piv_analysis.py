@@ -1,57 +1,50 @@
-#%% IMPORT LIBRARIES
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-
-from pathlib import Path
-from shutil import copyfile
-
-from pydata.video import Video
-from pydata.roi import ROI
-from pypiv.piv import PIV, contrast_stretch, high_pass, intensity_clip, generate_background, local_norm_median_val
-
+# %% IMPORT LIBRARIES
 from matplotlib import use as matplotlib_backend
 matplotlib_backend("TkAgg")
 
-#%% SELECT VIDEO
+import numpy as np
+import matplotlib.pyplot as plt
+
+from pathlib import Path
+
+from tqdm import tqdm
+
+from pyaux.helpers import create_output_directory, write_analysis_notes
+from pydata.video import Video
+from pydata.roi import ROI
+from pypiv.piv import PIV, generate_background, validation, preprocess
+
+# %% SELECT VIDEO
 video = Video()
+step  = 4
 
 # %% EXPORT PATH SETUP
-current_dir  = Path(os.path.dirname(os.path.realpath(__file__)))
-export_dir   = current_dir / "analyzed" / "piv"
+script_path  = Path(__file__).resolve()
+save_dir, notes_path = create_output_directory(video, video.directory_path, script_path.parent / "analyzed" / "piv")
 
-job_id        = input("Enter job identifier: ", )
-save_dir = export_dir.joinpath(video.directory_path.name + " - " + job_id)
-save_dir.mkdir(parents=True, exist_ok=False)
-copyfile(next(video.directory_path.glob("*.cih")), save_dir / "metadata.cih")
-
-notes_path = save_dir / "piv_analysis_record.txt"
-preprocess_string = open("piv_analysis.py", "r").read()
-notes_path.write_text(preprocess_string)
-
-#%% PREPROCESS
+# %% PREPROCESS
 first_frame = video[0]
 roi = ROI(first_frame, select=True).square()
 background = generate_background(video, step=10)
 
-def preprocess(image):
-    processed_image = image.astype(np.float64) - background
+def preprocess_func(image):
+    processed_image = image.astype(np.float32) - background
     processed_image = processed_image.cropped(roi=roi)
     processed_image = processed_image.inverted()
     processed_image = processed_image.normalized()
-    processed_image = contrast_stretch(processed_image)
-    processed_image = intensity_clip(processed_image, min_val=np.mean(processed_image) + np.std(processed_image))
-    processed_image = high_pass(processed_image, clip=True)
+    processed_image = preprocess.contrast_stretch(processed_image)
+    processed_image = preprocess.intensity_clip(processed_image, min_val=np.mean(processed_image) + np.std(processed_image))
+    processed_image = preprocess.high_pass(processed_image, clip=True)
     return processed_image
 
-video.preprocess = preprocess
+video.preprocess = preprocess_func
 
-#%% FILTER FUNCTION
-def filter(u, v):
-    flags = local_norm_median_val(u, v, 0.1, 2)
+# %% FILTER FUNCTION
+def filter_func(u, v):
+    flags = validation.local_norm_median_val(u, v, 0.1, 2)
     return flags
 
-#%% RUN PIV
+# %% RUN PIV
 piv = PIV(
     video=video, 
     fps=video.fps,
@@ -60,14 +53,25 @@ piv = PIV(
     search_size=32,
     overlap=12,
     sig2noise_threshold=2,
-    filter_func=filter
+    filter_func=filter_func
 )
 
-#%% COMPARE TWO FRAMES THE PIV ALGORITHM USES
-piv.compare_frames(0, show=False)
-plt.savefig(save_dir/"frame_comparison.pdf", dpi=200)
+path_dictionary = {
+    "video_path": str(video.directory_path.resolve()),
+    "script_path": str(Path(__file__).resolve()),
+}
+write_analysis_notes(path_dictionary, {'roi': roi, 'original_fps': video.fps, 'step': step}, notes_path)
+
+# %% COMPARE TWO FRAMES THE PIV ALGORITHM USES
+ax = piv.compare_frames(0, show=False)
+ax.figure.savefig(save_dir/"frame_comparison.pdf", dpi=200)
 plt.show()
 
 #%% RUN PIV
-for time, u, v in piv.run(step=4, animate=True, save_at=save_dir/"piv"):
-    pass
+results = piv.run(step=step, animate=True, save_at=save_dir/"piv")
+try:
+    for time, u, v in tqdm(results):
+        pass
+finally:
+    results.close()
+    plt.ioff()

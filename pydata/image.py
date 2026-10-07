@@ -103,9 +103,10 @@ class Image(np.ndarray):
         _, _, _, max_loc = cv2.minMaxLoc(correlation_map)
         return max_loc
 
-    def normalized(self, scale=1, offset=0, astype=np.float64):
+    def normalized(self, scale=1, offset=0, astype=np.float32):
         img = self.astype(astype)
-        return scale * (img - img.min()) / (img.max() - img.min()) + offset
+        range = (img.max() - img.min())
+        return offset*np.ones_like(img) if range==0 else scale * (img - img.min()) / range + offset
 
     def inverted(self):
         return (self.max() - self) + self.min()

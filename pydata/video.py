@@ -36,6 +36,17 @@ class Video:
         self._current_frame_index = 0
         self.current_frame_index = 0
 
+    def __getitem__(self, item):
+        self.current_frame_index = item
+        return self.current_frame
+
+    def __iter__(self):
+        for frame_index in range(self.length):
+            yield self[frame_index]
+
+    def __len__(self):
+        return self.length
+
     @property
     def current_frame_index(self):
         return self._current_frame_index
@@ -60,17 +71,6 @@ class Video:
     def preprocess(self, new_function):
         self._preprocess = new_function
         self.current_frame = new_function(self.current_frame)
-
-    def __getitem__(self, item):
-        self.current_frame_index = item
-        return self.current_frame
-
-    def __iter__(self):
-        for frame_index in range(self.length):
-            yield self[frame_index]
-
-    def __len__(self):
-        return self.length
 
     def play(self, start_frame=None, end_frame=None, step=1):
         start_frame = self.current_frame_index if start_frame is None else start_frame

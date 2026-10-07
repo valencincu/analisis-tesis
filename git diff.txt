@@ -1,97 +1,137 @@
-diff --git a/aux/play_video.py b/aux/play_video.py
-index 5c37696..d124cfd 100644
---- a/aux/play_video.py
-+++ b/aux/play_video.py
-@@ -44,9 +44,9 @@ for i, frame in enumerate(height_maps):
-     out.write((255*normalize_image(frame)).astype(np.uint8))
- 
- plt.ioff()
-+plt.close()
-+
-+plt.show()
- 
- out.release()
- f.close()
-- 
--
-- 
-diff --git a/data_fft.py b/data_fft.py
+diff --git a/aux/gif.py b/aux/gif.py
 deleted file mode 100644
-index b90d4e4..0000000
---- a/data_fft.py
+index 4d304b2..0000000
+--- a/aux/gif.py
 +++ /dev/null
-@@ -1,65 +0,0 @@
--import numpy as np
--import h5py
+@@ -1,12 +0,0 @@
 -import os
--import scienceplots
--from matplotlib import pyplot as plt
--from pathlib import Path
--from pydata.video import video_fft
--from scipy.signal import find_peaks, peak_widths
+-import glob
+-from PIL import Image
+-
+-frame_folder = "gif"
+- 
+-# create an empty list to store the frames
+-frames = [Image.open(image) for image in sorted(glob.glob(f"{frame_folder}/*.png"))]
+-
+-save_loc = input("Save location: ")
+-# save as new gif
+-frames[0].save(save_loc + os.sep + "gif.gif", save_all=True, append_images=frames[1:], optimize=False, duration=16, loop=0)
+\ No newline at end of file
+diff --git a/aux/play_video.py b/aux/play_video.py
+deleted file mode 100644
+index b57a156..0000000
+--- a/aux/play_video.py
++++ /dev/null
+@@ -1,50 +0,0 @@
+-import h5py
+-import matplotlib.pyplot as plt
+-import numpy as np
+-import cv2
 -from tkinter import Tk
 -from tkinter.filedialog import askdirectory
--from uncertainties import unumpy as unp
--plt.style.use('science')
--cm = 1/2.54
+-from matplotlib import use as matplotlib_backend
+-from pathlib import Path
+-matplotlib_backend("TkAgg")
 -
--ffts  = []
--freqs = []
--colors = plt.cm.hsv(np.linspace(0,1,8))
--plt.figure(figsize=(18*cm, 6*cm))
--
--#%% OPEN FILE
+-# OPEN FILE
 -Tk().withdraw() 
--directory = Path(askdirectory(title="Select data directory"))
+-directory = Path(askdirectory(title="Select data directory", initialdir="analysis"))
 -print(f"Analyzing: {directory}")
--print(os.path.isfile(directory / 'height_maps.hdf5'))
--f = h5py.File(directory / 'height_maps.hdf5', 'r')
+-f = h5py.File(directory / "height_maps.hdf5", "r")
 -
--#%% DATA
--fps         = f['fps'][0] / f['step'][0]
--cal         = f['calibration_factor'][0]
--height_maps = f['height_maps']
--shape = height_maps.shape
--print(fps, shape)
+-# AUXILIARY FUNCTION
+-def normalize_image(img):
+-    return (img - img.min()) / (img.max() - img.min())
 -
--#%% TIME
--t = np.arange(0, len(height_maps))/fps
--ti, tf = min(t), max(t)
--idx_i, idx_f = np.array(*np.where(np.logical_and(ti<t, t<tf)))[np.array([1,-1])]
+-# DATA
+-fps         = int(f["fps"][0])
+-height_maps = f["height_maps"]
+-cal         = f["calibration_factor"][0]
 -
--#%% NEAR FIELD
--heights  = height_maps[:,280:610,280:610]
--heights -= heights.mean()
+-shape = height_maps[0].shape
 -
--#%% FREQUENCY ANALYSIS
--freqs, fft = video_fft(heights[idx_i:idx_f], fps=fps)
--peaks, _   = find_peaks(np.sum(np.abs(fft), axis=(1,2)), distance=1, prominence=0.5e-7, height=0.1*np.max(np.abs(fft)))
+-# PLAY VIDEO
+-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+-out = cv2.VideoWriter(directory / "output.avi", fourcc, 30.0, (shape[1], shape[0]), isColor=False)
 -
+-plt.ion()
 -
--fig = plt.figure(figsize=(12*cm, 5*cm))
--fig.tight_layout()
+-fig, ax = plt.subplots()
+-for i, frame in enumerate(height_maps):
+-    ax.clear()
+-    ax.imshow(frame, cmap="RdBu", vmin=-5e-3, vmax=5e-3)
+-    ax.set_xlim(0, shape[0])
+-    ax.set_ylim(0, shape[0])
+-    plt.savefig(f"gif/{i:04}.png",dpi=150)
+-    fig.canvas.draw()
+-    fig.canvas.flush_events()  
 -
--plt.plot(freqs, np.sum(np.abs(fft), axis=(1,2)), color='k', lw=1)
--plt.xlabel("Frecuencia [Hz]")
--plt.ylabel("Suma de amplitudes")
--plt.savefig(directory / "espectro.png", dpi=500)
--plt.show()
+-    out.write((255*normalize_image(frame)).astype(np.uint8))
 -
--im = plt.imshow(np.abs(fft[peaks[0]]), cmap='bone')
--plt.colorbar(im, label="Amplitud")
--plt.show()
+-plt.ioff()
+-plt.close()
 -
--im = plt.imshow(np.angle(fft[peaks[0]]), cmap='hsv')
--plt.colorbar(im, label="Fase")
--plt.show()
--
+-out.release()
 -f.close()
-diff --git a/fcd-analysis.py b/fcd-analysis.py
+diff --git a/aux/promediar_imagenes.py b/aux/promediar_imagenes.py
 deleted file mode 100644
-index 16dbfab..0000000
---- a/fcd-analysis.py
+index f396a4d..0000000
+--- a/aux/promediar_imagenes.py
 +++ /dev/null
-@@ -1,139 +0,0 @@
+@@ -1,48 +0,0 @@
+-import os
+-from tkinter import Tk
+-from tkinter.filedialog import askdirectory
+-
+-import cv2
+-import matplotlib.pyplot as plt
+-import numpy as np
+-from PIL import Image
+-
+-roi = None
+-allowed_formats = "tiff, tif, bmp, png"  
+-
+-
+-Tk().withdraw()
+-data_dir_name   = askdirectory(title="Select data directory") 
+-print(f"Analyzing: {data_dir_name}")
+-
+-save_dir_name   = askdirectory(title="Select save directory") 
+-print(f"Analyzing: {save_dir_name}")
+-
+-data_dir = os.path.abspath(data_dir_name)
+-save_dir =  os.path.abspath(save_dir_name)
+-
+-image_paths = os.listdir(data_dir_name)
+-
+-promediado = 0
+-N = 0
+-for image_path in image_paths:
+-    extension = image_path.split(".")[-1].lower() if "." in image_path else ""
+-    if extension in allowed_formats:
+-        i = cv2.imread(data_dir + os.sep + image_path, cv2.IMREAD_UNCHANGED)
+-        i = np.array(i, dtype=np.float64)
+-
+-        promediado += i
+-        N += 1
+-
+-promediado /= N
+-
+-print(np.max(promediado), np.min(promediado))
+-
+-plt.subplot(121)
+-plt.imshow(promediado)
+-plt.axis("off")
+-plt.show()
+-
+-
+-filename = data_dir_name.split(os.sep)[-1]
+-cv2.imwrite(save_dir + os.sep + f"{filename}_promedio.bmp", promediado.astype(np.uint8))
+diff --git a/fcd_analysis.py b/fcd_analysis.py
+index e3e47d7..2cc9823 100644
+--- a/fcd_analysis.py
++++ b/fcd_analysis.py
+@@ -1,21 +1,10 @@
 -#%% SELECT DATA DIRECTORY
 -import os
 -from tkinter import Tk
@@ -101,25 +141,23 @@ index 16dbfab..0000000
 -dirname = askdirectory(title="Select data directory") 
 -print(f"Analyzing: {dirname}")
 -
--#%% IMPORT LIBRARIES
+ #%% IMPORT LIBRARIES
 -import h5py
--import matplotlib.pyplot as plt
--import numpy as np
--import scienceplots
--
--from glob import glob
+ import matplotlib.pyplot as plt
+ import numpy as np
+ import scienceplots
+ 
 -from matplotlib import use as matplotlib_backend
--from pathlib import Path
+ from pathlib import Path
 -from shutil import copyfile
--from tqdm import tqdm
--
--from pyfcd.layer import Layer, refractive_indexes
--from pyfcd.fcd import FCD
--
--from pydata.video import Video
--from pydata.roi import ROI
--from pydata.image import *
--
++from matplotlib import use as matplotlib_backend
+ from tqdm import tqdm
+ 
+ from pyfcd.layer import Layer, refractive_indexes
+@@ -25,43 +14,19 @@ from pydata.video import Video
+ from pydata.roi import ROI
+ from pydata.image import *
+ 
 -matplotlib_backend("TkAgg")
 -
 -# %% IMPORT PATH SETUP
@@ -140,7 +178,8 @@ index 16dbfab..0000000
 -# %% EXPORT PATH SETUP
 -current_dir  = Path(os.path.dirname(os.path.realpath(__file__)))
 -export_dir   = current_dir / "analyzed" / "fcd"
--
++from pyaux.helpers import create_output_directory, write_analysis_notes
+ 
 -save_dir = export_dir.joinpath(import_dir.name + " - " + job_id)
 -save_dir.mkdir(parents=True, exist_ok=False)
 -copyfile(next(displaced_images_path.glob("*.cih")), save_dir / "metadata.cih")
@@ -152,35 +191,58 @@ index 16dbfab..0000000
 -reference = Image(image_path=reference_image_path)
 -roi       = ROI(video.current_frame, select=True).square()
 -step      = 4
--
++matplotlib_backend("TkAgg")
+ 
 -# %% PHYSICAL PARAMETERS
--square_size = 2e-3 # m
 -alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
--
--layers = [
--    Layer(2.2e-2, "Air"), 
--    Layer(0.5e-2, "Glass"), 
--    Layer(8.1e-2, "Water")
--]
--
--H  = 72e-2  # m (distance between camera and pattern)
--hp =  np.sum([layer.effective_height(refractive_indexes["Water"]) for layer in layers])
--
--effective_height = alpha*hp
--
++def find_reference_image(import_dir):
++    return next(
++        import_dir.joinpath(filename)
++        for filename in import_dir.glob("*.bmp")
++        if "ref" in str(filename).lower()
++    )
+ 
+-H  = 80e-2  # m (distance between camera and pattern)
++# %% FCD SETUP
++H  = 80e-2  # m
+ 
+ layers = [
+     Layer(2.2e-2, "Air"), 
+@@ -72,69 +37,52 @@ layers = [
+ hp =  np.sum([layer.effective_height(refractive_indexes["Water"]) for layer in layers])
+ 
+ parallax_correction = (1 - hp / H)
+-square_size = 2e-3 * parallax_correction # m
+-effective_height =  1 / (1 / (alpha*hp) - 1 / H)
++square_size = 2e-3 * parallax_correction
+ 
 -# %% FCD SETUP
--fcd = FCD(
++alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
++effective_height =  (1 / (alpha*hp) - 1 / H)**(-1)
++
++# %% VIDEO AND REFERENCE SETUP
++video     = Video()
++reference = Image(image_path=find_reference_image(video.directory_path.parent))
++
++roi  = ROI(video[0], select=True).square()
++step = 4
++
++reference = reference.cropped(roi=roi)
++video.preprocess = lambda frame: frame.cropped(roi=roi)
+ 
+ fcd = FCD(
 -    reference.cropped(roi=roi),
--    square_size=square_size, 
--    effective_height=effective_height
--)
--
++    reference,
+     square_size=square_size, 
+     effective_height=effective_height
+ )
+ 
 -# %% FCD PROCESSING
 -def apply_fcd(frame):
 -    height_field = fcd.analyze(frame.cropped(roi=roi), full_output=False)
 -    return height_field
 -
--# %% SAVE CONFIG
+ # %% SAVE CONFIG
 -path_string = f"""PATHS
 -displaced_images_path : {displaced_images_path}
 -reference_image_path  : {reference_image_path}
@@ -189,17 +251,16 @@ index 16dbfab..0000000
 -notes = f"""NOTES:\n{user_input}\nROI:{str(roi)}
 -"""
 -
--preprocess_string = open("fcd-analysis.py", "r").read()
+-preprocess_string = open("fcd_analysis.py", "r").read()
 -data = ("\n---\n".join([notes, path_string, preprocess_string]));
 -notes_path.write_text(data)
 -
 -# %% ANALYZE
 -f = h5py.File(save_dir / "height_maps.hdf5", "w")
 -height_maps = f.create_dataset("height_maps", (video.length // step, *roi.shape), dtype=np.float16)
--f.create_dataset("fps", data=(video.fps,), dtype=np.float16)
--f.create_dataset("calibration_factor", data=(fcd.calibration_factor,))
+-f.create_dataset("fps", data=(video.fps / step,), dtype=np.float16)
+-f.create_dataset("px_to_m", data=(fcd.calibration_factor,))
 -f.create_dataset("effective_height", data=(fcd.effective_height,))
--f.create_dataset("step", data=(step,))
 -
 -# %% PLOT
 -cm = 1/2.54
@@ -232,236 +293,909 @@ index 16dbfab..0000000
 -
 -f.close()
 \ No newline at end of file
-diff --git a/fcd_one_image.py b/fcd_one_image.py
-index cd84859..0e1197c 100644
---- a/fcd_one_image.py
-+++ b/fcd_one_image.py
-@@ -1,4 +1,5 @@
- #%% SELECT DATA DIRECTORY
-+import os
- from tkinter import Tk
- from tkinter.filedialog import askopenfilename
++script_path = Path(__file__).resolve()
++path_dictionary = {
++    "displaced_images_path": video.directory_path.resolve(),
++    "reference_image_path": reference.path.resolve(),
++    "script_path": script_path,
++}
++
++parameter_dictionary = {
++    'ROI': roi, 
++    'effective_height': effective_height, 
++    'calibration_factor': fcd.calibration_factor,
++    'parallax_correction': parallax_correction,
++    'original_fps': video.fps,
++    'step': step
++}
++
++save_dir, notes_path = create_output_directory(video, video.directory_path.parent, script_path.parent / "analyzed" / "fcd")
++write_analysis_notes(path_dictionary, parameter_dictionary, notes_path)
++
++# %% FCD RUN
++results = fcd.analyze_series(video, video.fps, step=step, animate=True, save_at=save_dir/"height_maps")
++try:
++    for t, i_def, height_map in results:
++        pass
++finally:
++    results.close()
++    plt.ioff()
+diff --git a/git diff.txt b/git diff.txt
+index 4c165e7..958843f 100644
+--- a/git diff.txt	
++++ b/git diff.txt	
+@@ -1,467 +0,0 @@
+-diff --git a/aux/play_video.py b/aux/play_video.py
+-index 5c37696..d124cfd 100644
+---- a/aux/play_video.py
+-+++ b/aux/play_video.py
+-@@ -44,9 +44,9 @@ for i, frame in enumerate(height_maps):
+-     out.write((255*normalize_image(frame)).astype(np.uint8))
+- 
+- plt.ioff()
+-+plt.close()
+-+
+-+plt.show()
+- 
+- out.release()
+- f.close()
+-- 
+--
+-- 
+-diff --git a/data_fft.py b/data_fft.py
+-deleted file mode 100644
+-index b90d4e4..0000000
+---- a/data_fft.py
+-+++ /dev/null
+-@@ -1,65 +0,0 @@
+--import numpy as np
+--import h5py
+--import os
+--import scienceplots
+--from matplotlib import pyplot as plt
+--from pathlib import Path
+--from pydata.video import video_fft
+--from scipy.signal import find_peaks, peak_widths
+--from tkinter import Tk
+--from tkinter.filedialog import askdirectory
+--from uncertainties import unumpy as unp
+--plt.style.use('science')
+--cm = 1/2.54
+--
+--ffts  = []
+--freqs = []
+--colors = plt.cm.hsv(np.linspace(0,1,8))
+--plt.figure(figsize=(18*cm, 6*cm))
+--
+--#%% OPEN FILE
+--Tk().withdraw() 
+--directory = Path(askdirectory(title="Select data directory"))
+--print(f"Analyzing: {directory}")
+--print(os.path.isfile(directory / 'height_maps.hdf5'))
+--f = h5py.File(directory / 'height_maps.hdf5', 'r')
+--
+--#%% DATA
+--fps         = f['fps'][0] / f['step'][0]
+--cal         = f['calibration_factor'][0]
+--height_maps = f['height_maps']
+--shape = height_maps.shape
+--print(fps, shape)
+--
+--#%% TIME
+--t = np.arange(0, len(height_maps))/fps
+--ti, tf = min(t), max(t)
+--idx_i, idx_f = np.array(*np.where(np.logical_and(ti<t, t<tf)))[np.array([1,-1])]
+--
+--#%% NEAR FIELD
+--heights  = height_maps[:,280:610,280:610]
+--heights -= heights.mean()
+--
+--#%% FREQUENCY ANALYSIS
+--freqs, fft = video_fft(heights[idx_i:idx_f], fps=fps)
+--peaks, _   = find_peaks(np.sum(np.abs(fft), axis=(1,2)), distance=1, prominence=0.5e-7, height=0.1*np.max(np.abs(fft)))
+--
+--
+--fig = plt.figure(figsize=(12*cm, 5*cm))
+--fig.tight_layout()
+--
+--plt.plot(freqs, np.sum(np.abs(fft), axis=(1,2)), color='k', lw=1)
+--plt.xlabel("Frecuencia [Hz]")
+--plt.ylabel("Suma de amplitudes")
+--plt.savefig(directory / "espectro.png", dpi=500)
+--plt.show()
+--
+--im = plt.imshow(np.abs(fft[peaks[0]]), cmap='bone')
+--plt.colorbar(im, label="Amplitud")
+--plt.show()
+--
+--im = plt.imshow(np.angle(fft[peaks[0]]), cmap='hsv')
+--plt.colorbar(im, label="Fase")
+--plt.show()
+--
+--f.close()
+-diff --git a/fcd-analysis.py b/fcd-analysis.py
+-deleted file mode 100644
+-index 16dbfab..0000000
+---- a/fcd-analysis.py
+-+++ /dev/null
+-@@ -1,139 +0,0 @@
+--#%% SELECT DATA DIRECTORY
+--import os
+--from tkinter import Tk
+--from tkinter.filedialog import askdirectory
+--
+--Tk().withdraw() 
+--dirname = askdirectory(title="Select data directory") 
+--print(f"Analyzing: {dirname}")
+--
+--#%% IMPORT LIBRARIES
+--import h5py
+--import matplotlib.pyplot as plt
+--import numpy as np
+--import scienceplots
+--
+--from glob import glob
+--from matplotlib import use as matplotlib_backend
+--from pathlib import Path
+--from shutil import copyfile
+--from tqdm import tqdm
+--
+--from pyfcd.layer import Layer, refractive_indexes
+--from pyfcd.fcd import FCD
+--
+--from pydata.video import Video
+--from pydata.roi import ROI
+--from pydata.image import *
+--
+--matplotlib_backend("TkAgg")
+--
+--# %% IMPORT PATH SETUP
+--import_dir    = Path(os.path.abspath(dirname))
+--job_id        = input("Enter job identifier: ", )
+--
+--reference_image_path = next(
+--    import_dir.joinpath(filename)
+--    for filename in import_dir.glob("*.bmp")
+--    if "referencia" in str(filename).lower()
+--)
+--
+--displaced_images_path = import_dir / "Video"
+--
+--print("Reference image path:", reference_image_path)
+--print("Displaced images directory:", displaced_images_path)
+--
+--# %% EXPORT PATH SETUP
+--current_dir  = Path(os.path.dirname(os.path.realpath(__file__)))
+--export_dir   = current_dir / "analyzed" / "fcd"
+--
+--save_dir = export_dir.joinpath(import_dir.name + " - " + job_id)
+--save_dir.mkdir(parents=True, exist_ok=False)
+--copyfile(next(displaced_images_path.glob("*.cih")), save_dir / "metadata.cih")
+--
+--notes_path = save_dir / "notes.txt"
+--
+--# %% VIDEO & REFERENCE SETUP, ROI SELECTION
+--video     = Video(directory_path=displaced_images_path)
+--reference = Image(image_path=reference_image_path)
+--roi       = ROI(video.current_frame, select=True).square()
+--step      = 4
+--
+--# %% PHYSICAL PARAMETERS
+--square_size = 2e-3 # m
+--alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
+--
+--layers = [
+--    Layer(2.2e-2, "Air"), 
+--    Layer(0.5e-2, "Glass"), 
+--    Layer(8.1e-2, "Water")
+--]
+--
+--H  = 72e-2  # m (distance between camera and pattern)
+--hp =  np.sum([layer.effective_height(refractive_indexes["Water"]) for layer in layers])
+--
+--effective_height = alpha*hp
+--
+--# %% FCD SETUP
+--fcd = FCD(
+--    reference.cropped(roi=roi),
+--    square_size=square_size, 
+--    effective_height=effective_height
+--)
+--
+--# %% FCD PROCESSING
+--def apply_fcd(frame):
+--    height_field = fcd.analyze(frame.cropped(roi=roi), full_output=False)
+--    return height_field
+--
+--# %% SAVE CONFIG
+--path_string = f"""PATHS
+--displaced_images_path : {displaced_images_path}
+--reference_image_path  : {reference_image_path}
+--"""
+--user_input = input("NOTES:\n")
+--notes = f"""NOTES:\n{user_input}\nROI:{str(roi)}
+--"""
+--
+--preprocess_string = open("fcd-analysis.py", "r").read()
+--data = ("\n---\n".join([notes, path_string, preprocess_string]));
+--notes_path.write_text(data)
+--
+--# %% ANALYZE
+--f = h5py.File(save_dir / "height_maps.hdf5", "w")
+--height_maps = f.create_dataset("height_maps", (video.length // step, *roi.shape), dtype=np.float16)
+--f.create_dataset("fps", data=(video.fps,), dtype=np.float16)
+--f.create_dataset("calibration_factor", data=(fcd.calibration_factor,))
+--f.create_dataset("effective_height", data=(fcd.effective_height,))
+--f.create_dataset("step", data=(step,))
+--
+--# %% PLOT
+--cm = 1/2.54
+--plt.style.use("science")
+--max_height = 4e-3
+--
+--def panel_update(fig, axs, i_def, height_map, vmin=None, vmax=None):
+--        axs[0].imshow(i_def, cmap="Greys_r")
+--        axs[1].imshow(height_map, cmap="bone", vmin=vmin, vmax=vmax)
+--        fig.canvas.draw()
+--        fig.canvas.flush_events()
+--
+--plt.ion()
+--fig, axs = plt.subplots(1, 2, figsize=(15*cm, 6*cm))
+--fig.tight_layout(pad=2)
+--
+--for frame in tqdm(video.play(step=step)):
+--    i = video.current_frame_index // step
+--
+--    height_map     = apply_fcd(frame)
+--    height_maps[i] = height_map.astype(np.float16)
+--
+--    if (i % 10) == 0: 
+--        panel_update(fig, axs, frame, height_map, vmin=-max_height, vmax=max_height)
+--        if i / 10 == 1.0:
+--            plt.savefig(str(save_dir / "panel.png"), dpi=500)
+--
+--plt.close()
+--plt.ioff()
+--
+--f.close()
+-\ No newline at end of file
+-diff --git a/fcd_one_image.py b/fcd_one_image.py
+-index cd84859..0e1197c 100644
+---- a/fcd_one_image.py
+-+++ b/fcd_one_image.py
+-@@ -1,4 +1,5 @@
+- #%% SELECT DATA DIRECTORY
+-+import os
+- from tkinter import Tk
+- from tkinter.filedialog import askopenfilename
+- from pathlib import Path
+-@@ -31,19 +32,21 @@ reference_image = Image(image_path=reference_image_path)
+- roi             = ROI(displaced_image, select=True).square()
+- 
+- # %% PHYSICAL PARAMETERS
+--square_size = 2e-3 # m
+- alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
+- 
+-+H  = 80e-2  # m (distance between camera and pattern)
+-+
+- layers = [
+-     Layer(2.2e-2, "Air"), 
+-     Layer(0.5e-2, "Glass"), 
+-     Layer(8.1e-2, "Water")
+- ]
+- 
+--H  = 72e-2  # m (distance between camera and pattern)
+- hp =  np.sum([layer.effective_height(refractive_indexes["Water"]) for layer in layers])
+- 
+--effective_height = (1 / (alpha*hp) + 1 / H)**(-1)
+-+parallax_correction = (1 - hp / H)
+-+square_size = 2e-3 * parallax_correction # m
+-+effective_height =  1 / (1 / (alpha*hp) - 1 / H)
+- 
+- # %% FCD SETUP
+- fcd = FCD(
+-@@ -57,19 +60,22 @@ height_field = fcd.analyze(displaced_image.cropped(roi=roi), full_output=False)
+- 
+- # %% PLOT
+- cm = 1/2.54
+--plt.style.use("science")
+- 
+--fig, axs = plt.subplots(2, 1, figsize=(8.5*cm, 20*cm))
+--fig.tight_layout(pad=2)
+-+x = np.arange(0, height_field.shape[1]) * fcd.calibration_factor
+-+y = np.arange(0, height_field.shape[1]) * fcd.calibration_factor
+-+X, Y = np.meshgrid(x, y)
+-+
+-+fig, axs = plt.subplots(2, 1, figsize=(8.5*cm, 20*cm), dpi=200)
+-+fig.tight_layout(pad=1)
+- 
+--axs[0].imshow(displaced_image.cropped(roi=roi), cmap="Greys_r")
+--axs[0].axis("off")
+-+axs[0].pcolormesh(X, Y, displaced_image.cropped(roi=roi), cmap="Greys_r", rasterized=True)
+-+axs[0].set_aspect("equal")
+- 
+--im = axs[1].imshow(height_field*1e3, cmap="RdBu")
+--axs[1].axis("off")
+-+im = axs[1].pcolormesh(X, Y, height_field*1e3, cmap="RdBu", rasterized=True)
+-+axs[1].set_aspect("equal")
+- plt.colorbar(im, label="Altura [mm]", ax=axs[1], orientation='horizontal')
+- 
+--plt.savefig("fcd.pdf", dpi=200)
+-+plt.savefig("analyzed" + os.sep + "fcd.pdf", dpi=200)
+- plt.show()
+- 
+- 
+-diff --git a/pydata/image.py b/pydata/image.py
+-index 0ff0c64..1e5928a 100644
+---- a/pydata/image.py
+-+++ b/pydata/image.py
+-@@ -100,7 +100,7 @@ class Image(np.ndarray):
+- 
+-     def correlate(self, template, image=None):
+-         correlation_map = cv2.matchTemplate(self, template, method=cv2.TM_CCORR_NORMED)
+--        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(correlation_map)
+-+        _, _, _, max_loc = cv2.minMaxLoc(correlation_map)
+-         return max_loc
+- 
+-     def normalized(self, scale=1, offset=0, astype=np.float64):
+-@@ -112,7 +112,7 @@ class Image(np.ndarray):
+- 
+-     def show(self, axis=None, show_plot=True):
+-         if axis is None:
+--            fig, axis = plt.subplots()
+-+            _, axis = plt.subplots()
+-         axis.imshow(self)
+-         if show_plot: plt.show()
+- 
+-diff --git a/pydata/roi.py b/pydata/roi.py
+-index 7bfeed7..be7aebc 100644
+---- a/pydata/roi.py
+-+++ b/pydata/roi.py
+-@@ -92,7 +92,6 @@ class ROI:
+-     def yf(self):
+-         return self.limits[3]
+- 
+--
+-     def reset(self):
+-         height, width = self._region
+-         rect = (0, 0, width, height)
+-diff --git a/pydata/video.py b/pydata/video.py
+-index 9e46c70..b38a774 100644
+---- a/pydata/video.py
+-+++ b/pydata/video.py
+-@@ -1,12 +1,13 @@
+- import glob
+- import os
+-+from pathlib import Path
+- from tkinter import filedialog
+--
+- import matplotlib.pyplot as plt
+- import numpy as np
+- import scipy.fft as fft
+- 
+- from pydata.image import Image
+-+from pydata.roi import ROI
+- 
+- def read_metadata(path):
+-     metadata_file = glob.glob(os.path.join(path, "*.cih"))[0]
+-@@ -19,51 +20,65 @@ def read_metadata(path):
+-     return metadata
+- 
+- 
+--allowed_formats = (".jpg", ".png", ".tiff", ".bmp", ".npy")
+-+allowed_formats = (".jpg", ".png", ".tiff", ".bmp", ".npy", ".tif")
+- 
+- 
+- class Video:
+--    def __init__(self, directory_path=None):
+--        self.directory_path = directory_path if directory_path else filedialog.askdirectory(title="Selecciona una carpeta")
+--        self.frames = sorted(self.__get_frames())
+--        self._current_frame_index = 0
+--        self.current_frame = self.read_frame(frame_index=0)
+--
+-+    def __init__(self, directory_path=None, preprocess=lambda x: x):
+-+        self.directory_path = directory_path if directory_path else Path(filedialog.askdirectory(title="Selecciona una carpeta"))
+-+        self._preprocess = preprocess
+-         self.metadata = self.__read_metadata()
+-         self.fps = float(self.metadata["Record Rate(fps)"])
+-+
+-+        self.frames = sorted(self.__get_frames())
+-         self.length = len(self.frames)
+--        self.shape = self.current_frame.shape
+-+
+-+        self._current_frame_index = 0
+-+        self.current_frame_index = 0
+- 
+-     @property
+-     def current_frame_index(self):
+-         return self._current_frame_index
+- 
+-+    @property
+-+    def shape(self):
+-+        return self.current_frame.shape
+-+
+-+    @property
+-+    def preprocess(self):
+-+        return self._preprocess
+-+
+-     @current_frame_index.setter
+-     def current_frame_index(self, new_index):
+--        self.read_frame(frame_index=new_index)
+-+        if not 0 <= new_index < len(self.frames):
+-+            raise IndexError(f"Frame index out of range: {new_index}")
+- 
+--    def read_frame(self, frame_index=None):
+--        frame_index = (
+--            self.current_frame_index
+--            if frame_index is None
+--            else frame_index
+--        )
+-+        self._current_frame_index = new_index
+-+        self.current_frame = self.preprocess(Image(image_path=self._frame_path(new_index)))
+- 
+--        if not 0 <= frame_index < len(self.frames):
+--            raise IndexError(f"Frame index out of range: {frame_index}")
+-+    @preprocess.setter
+-+    def preprocess(self, new_function):
+-+        self._preprocess = new_function
+-+        self.current_frame = new_function(self.current_frame)
+- 
+--        self._current_frame_index = frame_index
+--        self.current_frame = Image(image_path=self._frame_path(frame_index))
+-+    def __getitem__(self, item):
+-+        self.current_frame_index = item
+-         return self.current_frame
+- 
+-+    def __iter__(self):
+-+        for frame_index in range(self.length):
+-+            yield self[frame_index]
+-+
+-+    def __len__(self):
+-+        return self.length
+-+
+-     def play(self, start_frame=None, end_frame=None, step=1):
+-         start_frame = self.current_frame_index if start_frame is None else start_frame
+--        end_frame = self.length if end_frame is None else min(end_frame, self.length)
+-+        end_frame   = self.length if end_frame is None else min(end_frame, self.length)
+- 
+-         for frame_index in range(start_frame, end_frame, step):
+--            self.read_frame(frame_index)
+--            yield self.current_frame
+--        
+-+            yield self[frame_index]
+-+
+-     def show_movie(self, *, start_frame=None, end_frame=None, step=1, pre_process=None, vmin=-1e-3, vmax=1e-3,):
+-         plt.ion()
+-         fig, ax = plt.subplots(1, 1)
+-@@ -72,11 +87,9 @@ class Video:
+-         for frame in self.play(start_frame, end_frame, step):
+-             ax.clear()
+-             if pre_process is not None:
+--                to_show = pre_process(frame)
+--                ax.imshow(to_show, cmap='RdBu', vmin=vmin, vmax=vmax)
+-+                ax.imshow(pre_process(frame), cmap="RdBu", vmin=vmin, vmax=vmax)
+-             else:
+-                 frame.show(axis=ax, show_plot=False)
+--
+-             fig.canvas.flush_events()
+- 
+-         plt.ioff()
+-diff --git a/pyfcd/layer.py b/pyfcd/layer.py
+-index ad77a69..4f8e287 100644
+---- a/pyfcd/layer.py
+-+++ b/pyfcd/layer.py
+-@@ -1,6 +1,6 @@
+- import warnings
+- 
+--refractive_indexes = {"Air": 1.0003, "Glass": 1.5, "Acrylic": 1.48899, "Water": 1.34}
+-+refractive_indexes = {"Air": 1.000, "Glass": 1.5, "Acrylic": 1.48899, "Water": 1.33}
+- 
+- 
+- class Layer:
+diff --git a/piv_analysis.py b/piv_analysis.py
+index 310fc88..ecedd1c 100644
+--- a/piv_analysis.py
++++ b/piv_analysis.py
+@@ -6,8 +6,11 @@ import os
  from pathlib import Path
-@@ -31,19 +32,21 @@ reference_image = Image(image_path=reference_image_path)
- roi             = ROI(displaced_image, select=True).square()
+ from shutil import copyfile
  
- # %% PHYSICAL PARAMETERS
--square_size = 2e-3 # m
- alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
- 
-+H  = 80e-2  # m (distance between camera and pattern)
++from pyaux.helpers import create_output_directory, write_analysis_notes
 +
- layers = [
-     Layer(2.2e-2, "Air"), 
-     Layer(0.5e-2, "Glass"), 
-     Layer(8.1e-2, "Water")
- ]
- 
--H  = 72e-2  # m (distance between camera and pattern)
- hp =  np.sum([layer.effective_height(refractive_indexes["Water"]) for layer in layers])
- 
--effective_height = (1 / (alpha*hp) + 1 / H)**(-1)
-+parallax_correction = (1 - hp / H)
-+square_size = 2e-3 * parallax_correction # m
-+effective_height =  1 / (1 / (alpha*hp) - 1 / H)
- 
- # %% FCD SETUP
- fcd = FCD(
-@@ -57,19 +60,22 @@ height_field = fcd.analyze(displaced_image.cropped(roi=roi), full_output=False)
- 
- # %% PLOT
- cm = 1/2.54
--plt.style.use("science")
- 
--fig, axs = plt.subplots(2, 1, figsize=(8.5*cm, 20*cm))
--fig.tight_layout(pad=2)
-+x = np.arange(0, height_field.shape[1]) * fcd.calibration_factor
-+y = np.arange(0, height_field.shape[1]) * fcd.calibration_factor
-+X, Y = np.meshgrid(x, y)
+ from pydata.video import Video
+ from pydata.roi import ROI
 +
-+fig, axs = plt.subplots(2, 1, figsize=(8.5*cm, 20*cm), dpi=200)
-+fig.tight_layout(pad=1)
+ from pypiv.piv import PIV, contrast_stretch, high_pass, intensity_clip, generate_background, local_norm_median_val
  
--axs[0].imshow(displaced_image.cropped(roi=roi), cmap="Greys_r")
--axs[0].axis("off")
-+axs[0].pcolormesh(X, Y, displaced_image.cropped(roi=roi), cmap="Greys_r", rasterized=True)
-+axs[0].set_aspect("equal")
+ from matplotlib import use as matplotlib_backend
+@@ -17,17 +20,8 @@ matplotlib_backend("TkAgg")
+ video = Video()
  
--im = axs[1].imshow(height_field*1e3, cmap="RdBu")
--axs[1].axis("off")
-+im = axs[1].pcolormesh(X, Y, height_field*1e3, cmap="RdBu", rasterized=True)
-+axs[1].set_aspect("equal")
- plt.colorbar(im, label="Altura [mm]", ax=axs[1], orientation='horizontal')
+ # %% EXPORT PATH SETUP
+-current_dir  = Path(os.path.dirname(os.path.realpath(__file__)))
+-export_dir   = current_dir / "analyzed" / "piv"
+-
+-job_id        = input("Enter job identifier: ", )
+-save_dir = export_dir.joinpath(video.directory_path.name + " - " + job_id)
+-save_dir.mkdir(parents=True, exist_ok=False)
+-copyfile(next(video.directory_path.glob("*.cih")), save_dir / "metadata.cih")
+-
+-notes_path = save_dir / "piv_analysis_record.txt"
+-preprocess_string = open("piv_analysis.py", "r").read()
+-notes_path.write_text(preprocess_string)
++script_path  = Path(__file__).resolve()
++save_dir, notes_path = create_output_directory(video, video.directory_path, script_path.parent / "analyzed" / "piv")
  
--plt.savefig("fcd.pdf", dpi=200)
-+plt.savefig("analyzed" + os.sep + "fcd.pdf", dpi=200)
+ #%% PREPROCESS
+ first_frame = video[0]
+@@ -35,7 +29,7 @@ roi = ROI(first_frame, select=True).square()
+ background = generate_background(video, step=10)
+ 
+ def preprocess(image):
+-    processed_image = image.astype(np.float64) - background
++    processed_image = image.astype(np.float32) - background
+     processed_image = processed_image.cropped(roi=roi)
+     processed_image = processed_image.inverted()
+     processed_image = processed_image.normalized()
+@@ -63,11 +57,22 @@ piv = PIV(
+     filter_func=filter
+ )
+ 
++path_dictionary = {
++    "video_path": str(video.directory_path.resolve()),
++    "script_path": str(Path(__file__).resolve()),
++}
++write_analysis_notes(path_dictionary, {'roi': roi}, notes_path)
++
+ #%% COMPARE TWO FRAMES THE PIV ALGORITHM USES
+ piv.compare_frames(0, show=False)
+ plt.savefig(save_dir/"frame_comparison.pdf", dpi=200)
  plt.show()
  
- 
+ #%% RUN PIV
+-for time, u, v in piv.run(step=4, animate=True, save_at=save_dir/"piv"):
+-    pass
+\ No newline at end of file
++results = piv.run(step=4, animate=True, save_at=save_dir/"piv")
++try:
++    for time, u, v in results:
++        pass
++finally:
++    results.close()
++    plt.ioff()
+\ No newline at end of file
 diff --git a/pydata/image.py b/pydata/image.py
-index 0ff0c64..1e5928a 100644
+index 1e5928a..73dc69e 100644
 --- a/pydata/image.py
 +++ b/pydata/image.py
-@@ -100,7 +100,7 @@ class Image(np.ndarray):
- 
-     def correlate(self, template, image=None):
-         correlation_map = cv2.matchTemplate(self, template, method=cv2.TM_CCORR_NORMED)
--        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(correlation_map)
-+        _, _, _, max_loc = cv2.minMaxLoc(correlation_map)
+@@ -103,7 +103,7 @@ class Image(np.ndarray):
+         _, _, _, max_loc = cv2.minMaxLoc(correlation_map)
          return max_loc
  
-     def normalized(self, scale=1, offset=0, astype=np.float64):
-@@ -112,7 +112,7 @@ class Image(np.ndarray):
+-    def normalized(self, scale=1, offset=0, astype=np.float64):
++    def normalized(self, scale=1, offset=0, astype=np.float32):
+         img = self.astype(astype)
+         return scale * (img - img.min()) / (img.max() - img.min()) + offset
  
-     def show(self, axis=None, show_plot=True):
-         if axis is None:
--            fig, axis = plt.subplots()
-+            _, axis = plt.subplots()
-         axis.imshow(self)
-         if show_plot: plt.show()
- 
-diff --git a/pydata/roi.py b/pydata/roi.py
-index 7bfeed7..be7aebc 100644
---- a/pydata/roi.py
-+++ b/pydata/roi.py
-@@ -92,7 +92,6 @@ class ROI:
-     def yf(self):
-         return self.limits[3]
- 
--
-     def reset(self):
-         height, width = self._region
-         rect = (0, 0, width, height)
-diff --git a/pydata/video.py b/pydata/video.py
-index 9e46c70..b38a774 100644
---- a/pydata/video.py
-+++ b/pydata/video.py
-@@ -1,12 +1,13 @@
- import glob
- import os
-+from pathlib import Path
- from tkinter import filedialog
--
- import matplotlib.pyplot as plt
+diff --git a/pyfcd/fcd.py b/pyfcd/fcd.py
+index 284c271..1e9f733 100644
+--- a/pyfcd/fcd.py
++++ b/pyfcd/fcd.py
+@@ -1,23 +1,31 @@
  import numpy as np
- import scipy.fft as fft
- 
- from pydata.image import Image
-+from pydata.roi import ROI
- 
- def read_metadata(path):
-     metadata_file = glob.glob(os.path.join(path, "*.cih"))[0]
-@@ -19,51 +20,65 @@ def read_metadata(path):
-     return metadata
- 
- 
--allowed_formats = (".jpg", ".png", ".tiff", ".bmp", ".npy")
-+allowed_formats = (".jpg", ".png", ".tiff", ".bmp", ".npy", ".tif")
- 
- 
- class Video:
--    def __init__(self, directory_path=None):
--        self.directory_path = directory_path if directory_path else filedialog.askdirectory(title="Selecciona una carpeta")
--        self.frames = sorted(self.__get_frames())
--        self._current_frame_index = 0
--        self.current_frame = self.read_frame(frame_index=0)
--
-+    def __init__(self, directory_path=None, preprocess=lambda x: x):
-+        self.directory_path = directory_path if directory_path else Path(filedialog.askdirectory(title="Selecciona una carpeta"))
-+        self._preprocess = preprocess
-         self.metadata = self.__read_metadata()
-         self.fps = float(self.metadata["Record Rate(fps)"])
+ import matplotlib.pyplot as plt
++import h5py
 +
-+        self.frames = sorted(self.__get_frames())
-         self.length = len(self.frames)
--        self.shape = self.current_frame.shape
+ from matplotlib.colors import LogNorm
+ from scipy.fft import fft2, fftshift, ifft2, ifftshift
+ from skimage.restoration import unwrap_phase
+ 
++import pyfcd.fourier_space as fourier_space
+ from pyfcd.height_map import HeightMap
+ from pyfcd.carriers import Carrier
+-import pyfcd.fourier_space as fourier_space
 +
-+        self._current_frame_index = 0
-+        self.current_frame_index = 0
++from pyaux.helpers import animatable, saveable
+ 
+ class FCD:
+     def __init__(self, reference_image, *, effective_height=1, calibration_factor=None, square_size=None):
+         self._reference_image   = reference_image.astype(np.float32)
+ 
+         self._square_size       = square_size
+-        self._peaks             = self._find_carrier_peaks()
++        self._effective_height  = effective_height
+         self.calibration_factor = calibration_factor
+-        self.calibration_factor = self._determine_calibration_factor()
++
++        self._peaks             = self._find_carrier_peaks()
++        self.calibration_factor = self._determine_calibration_factor(self._peaks) if self.calibration_factor == None else self.calibration_factor
+         self._carriers          = self._build_carriers()
+-        self._effective_height  = effective_height
++        
++        self.x, self.y   = self._generate_coordinates(self.calibration_factor)
++        self.kx, self.ky = fourier_space.wavenumber_meshgrid(self.reference_image.shape, calibration_factor=self.calibration_factor, shifted=True)
  
      @property
-     def current_frame_index(self):
-         return self._current_frame_index
+     def reference_image(self):
+@@ -43,11 +51,27 @@ class FCD:
  
-+    @property
-+    def shape(self):
-+        return self.current_frame.shape
+         return HeightMap(height_map, phases, self.calibration_factor) if full_output else height_map
+ 
++    @saveable("_save")
++    @animatable("_animate")
++    def analyze_series(self, displaced_series, fps=1, start=0, stop=None, step=1, unwrap=True, fixed_loc=None, fixed_val=0):
++        stop = len(displaced_series) if stop == None else stop
 +
-+    @property
-+    def preprocess(self):
-+        return self._preprocess
++        for i in range(start, stop, step):
++            displaced_image = displaced_series[i]
++            height_map = self.analyze(
++                displaced_image, 
++                unwrap=unwrap, 
++                full_output=False, 
++                fixed_loc=fixed_loc,
++                fixed_val=fixed_val
++            )
++            yield i / fps, displaced_image, height_map
 +
-     @current_frame_index.setter
-     def current_frame_index(self, new_index):
--        self.read_frame(frame_index=new_index)
-+        if not 0 <= new_index < len(self.frames):
-+            raise IndexError(f"Frame index out of range: {new_index}")
+     def plot_carriers(self, show=True):
+-        fig, ax = plt.subplot()
++        fig, ax = plt.subplots()
+         ax.imshow(self._reference_image, cmap="gray")
  
--    def read_frame(self, frame_index=None):
--        frame_index = (
--            self.current_frame_index
--            if frame_index is None
--            else frame_index
--        )
-+        self._current_frame_index = new_index
-+        self.current_frame = self.preprocess(Image(image_path=self._frame_path(new_index)))
+-        for i, carrier in enumerate(self._carriers):
++        for carrier in self._carriers:
+             carrier.draw_vector(ax)
  
--        if not 0 <= frame_index < len(self.frames):
--            raise IndexError(f"Frame index out of range: {frame_index}")
-+    @preprocess.setter
-+    def preprocess(self, new_function):
-+        self._preprocess = new_function
-+        self.current_frame = new_function(self.current_frame)
+         ax.axis("off")
+@@ -57,46 +81,44 @@ class FCD:
+     def plot_fft(self, displaced_image, show=True):
+         fig, axs = plt.subplots(1, 2)
  
--        self._current_frame_index = frame_index
--        self.current_frame = Image(image_path=self._frame_path(frame_index))
-+    def __getitem__(self, item):
-+        self.current_frame_index = item
-         return self.current_frame
- 
-+    def __iter__(self):
-+        for frame_index in range(self.length):
-+            yield self[frame_index]
-+
-+    def __len__(self):
-+        return self.length
-+
-     def play(self, start_frame=None, end_frame=None, step=1):
-         start_frame = self.current_frame_index if start_frame is None else start_frame
--        end_frame = self.length if end_frame is None else min(end_frame, self.length)
-+        end_frame   = self.length if end_frame is None else min(end_frame, self.length)
- 
-         for frame_index in range(start_frame, end_frame, step):
--            self.read_frame(frame_index)
--            yield self.current_frame
--        
-+            yield self[frame_index]
-+
-     def show_movie(self, *, start_frame=None, end_frame=None, step=1, pre_process=None, vmin=-1e-3, vmax=1e-3,):
-         plt.ion()
-         fig, ax = plt.subplots(1, 1)
-@@ -72,11 +87,9 @@ class Video:
-         for frame in self.play(start_frame, end_frame, step):
-             ax.clear()
-             if pre_process is not None:
--                to_show = pre_process(frame)
--                ax.imshow(to_show, cmap='RdBu', vmin=vmin, vmax=vmax)
-+                ax.imshow(pre_process(frame), cmap="RdBu", vmin=vmin, vmax=vmax)
-             else:
-                 frame.show(axis=ax, show_plot=False)
+-        fft_reference_image = self._fft_image(self._reference_image)
+-        fft_displaced_image = self._fft_image(displaced_image)
 -
-             fig.canvas.flush_events()
+-        axs[0].imshow(np.abs(fft_reference_image), cmap='gray', norm=LogNorm())
+-        axs[0].set_title('Reference image')
+-
+-        axs[1].imshow(np.abs(fft_displaced_image), cmap='gray', norm=LogNorm())
+-        axs[1].set_title('Deformed image')
++        ffts = {
++            'Reference image': np.abs(self._fft_image(self._reference_image)), 
++            'Deformed image' : np.abs(self._fft_image(displaced_image))
++        }
  
-         plt.ioff()
-diff --git a/pyfcd/layer.py b/pyfcd/layer.py
-index ad77a69..4f8e287 100644
---- a/pyfcd/layer.py
-+++ b/pyfcd/layer.py
-@@ -1,6 +1,6 @@
- import warnings
+-        x_ticks, y_ticks, ticks = self._make_wavenumber_ticks()
+-
+-        for ax in axs:
++        for i, (title, fft) in enumerate(ffts.items()):
+             for carrier in self._carriers:
+-                carrier.draw_fft_marker(ax, color="r", fill=False)
++                carrier.draw_fft_marker(axs[i], color="r", fill=False)
++
++            axs[i].pcolormesh(self.kx, self.ky, fft, cmap='gray', norm=LogNorm(), rasterized=True)
++            axs[i].set_title(title)
  
--refractive_indexes = {"Air": 1.0003, "Glass": 1.5, "Acrylic": 1.48899, "Water": 1.34}
-+refractive_indexes = {"Air": 1.000, "Glass": 1.5, "Acrylic": 1.48899, "Water": 1.33}
+-            ax.set_xticks(x_ticks, [f"{tick[0] / 1e3:.2f}" for tick in ticks])
+-            ax.set_yticks(y_ticks, [f"{tick[1] / 1e3:.2f}" for tick in ticks])
+-            ax.set_xlabel(r"$k_x$ [$\text{mm}^{-1}$]")
+-            ax.set_ylabel(r"$k_y$ [$\text{mm}^{-1}$]")
++            axs[i].set_xlabel(r"$k_x$ [$\text{mm}^{-1}$]")
++            axs[i].set_ylabel(r"$k_y$ [$\text{mm}^{-1}$]")
+ 
+         if show: plt.show()
+-        return fig
++        return fig, axs
++
++    def _generate_coordinates(self, calibration_factor):
++        len_y, len_x = self.reference_image.shape
++        x = np.arange(len_x) * calibration_factor
++        y = np.arange(len_y) * calibration_factor
++        return np.meshgrid(x, y)
+ 
+     def _find_carrier_peaks(self):
+         return fourier_space.find_carrier_peaks(self._reference_image)
+ 
+-    def _determine_calibration_factor(self):
+-        if self.calibration_factor is not None:
+-            return self.calibration_factor
+-
++    def _determine_calibration_factor(self, peaks):
+         if self._square_size is None:
+             return 1
+         
+         checkerboard_frequencies_px = fourier_space.pixels_to_wavenumbers(
+             self._reference_image.shape,
+-            locations=self._peaks,
++            locations=peaks,
+         )
+-                                
+-        checkerboard_wavelength_px = 2 * np.pi / np.mean(np.abs(checkerboard_frequencies_px))
+-        checkerboard_wavelength_m = 2 * self._square_size
++        checkerboard_frequency_px  = np.mean(np.hypot(checkerboard_frequencies_px[:,0], checkerboard_frequencies_px[:,1])) / np.sqrt(2)
++        checkerboard_wavelength_px = 2 * np.pi / checkerboard_frequency_px
++        checkerboard_wavelength_m  = 2 * self._square_size
+ 
+         return checkerboard_wavelength_m / checkerboard_wavelength_px
+ 
+@@ -125,14 +147,56 @@ class FCD:
+     def _fft_image(self, image):
+         return fftshift(fft2(image - np.mean(image)))
+ 
+-    def _make_wavenumber_ticks(self):
+-        x_ticks = np.linspace(0, self._reference_image.shape[1] - 1, 5, dtype=int)
+-        y_ticks = np.linspace(0, self._reference_image.shape[0] - 1, 5, dtype=int)
+-        ticks = fourier_space.pixels_to_wavenumbers(
+-            self._reference_image.shape,
+-            np.array([y_ticks, x_ticks]).T,
+-            self.calibration_factor,
+-        )
+-        return x_ticks, y_ticks, ticks
++
++    def _save(self, gen, save_at):
++        shape = self.reference_image.shape
++        with h5py.File(str(save_at) + ".hdf5", "w") as f:
++            height_maps = f.create_dataset(
++                "height_maps [m]", (0, *shape), maxshape=(None, *shape), chunks=(1, *shape)
++            )
++            ts = f.create_dataset("t [s]", shape=(0, 1), maxshape=(None, 1), dtype=np.float64)
++            f.create_dataset("x [m]", data=self.x)
++            f.create_dataset("y [m]", data=self.y)
++            f.create_dataset("calibration_factor", data=self.calibration_factor, dtype=np.float64)
++
++            i = 0
++            for t, i_def, height_map in gen:
++                height_maps.resize(i+1, axis=0)
++                ts.resize(i+1, axis=0)
++
++                height_maps[i] = height_map
++                ts[i] = t
++
++                i += 1
++
++                yield t, i_def, height_map
++
++    def _animate(self, gen, vmin=-5e-3, vmax=5e-3):
++        plt.ion()
++        fig, axs = plt.subplots(1, 2, figsize=(7.5, 3), dpi=150)
++        fig.tight_layout(pad=2)
++
++        title = plt.suptitle('')
++
++        for t, i_def, height_map in gen:
++            axs[0].clear()
++            axs[1].clear()
++
++            title.set_text(f"{t} s")
++            axs[0].pcolormesh(self.x, self.y, i_def, cmap="Greys_r", rasterized=True)
++            axs[1].pcolormesh(self.x, self.y, height_map, cmap="bone", vmin=vmin, vmax=vmax)
++
++            fig.canvas.draw()
++            fig.canvas.flush_events()
++            plt.pause(0.001)
++
++            yield t, i_def, height_map
++
++        plt.ioff()
++
++    
++    
++
++
  
  
- class Layer:
+diff --git a/pypiv/piv.py b/pypiv/piv.py
+index ae90a77..8b11121 100644
+--- a/pypiv/piv.py
++++ b/pypiv/piv.py
+@@ -7,34 +7,11 @@ from openpiv.filters import replace_outliers
+ from openpiv.pyprocess import extended_search_area_piv, get_coordinates
+ from openpiv.preprocess import contrast_stretch, high_pass, intensity_clip
+ from openpiv.validation import sig2noise_val, local_norm_median_val, local_median_val, global_std
++from pyaux.helpers import animatable, saveable
+ 
+ from matplotlib import use as matplotlib_backend
+ matplotlib_backend("TkAgg")
+ 
+-def _animatable(animate_func):
+-    """animate_func: name of a method on the class that draws the results."""
+-    def decorator(f):
+-        @functools.wraps(f)
+-        def wrapper(self, *args, animate=False, **kwargs):
+-            gen = f(self, *args, **kwargs)
+-            if not animate:
+-                return gen
+-            return getattr(self, animate_func)(gen)
+-        return wrapper
+-    return decorator
+-
+-def _saveable(save_func):
+-    """save_func: name of a method on the class that saves the results."""
+-    def decorator(f):
+-        @functools.wraps(f)
+-        def wrapper(self, *args, save_at=None, **kwargs):
+-            gen = f(self, *args, **kwargs)
+-            if save_at == None:
+-                return gen
+-            return getattr(self, save_func)(gen, save_at)
+-        return wrapper
+-    return decorator
+-
+ class PIV:
+     def __init__(self, video, fps, interval=1, window_size=16, search_size=20, overlap=8, to_distance=1, sig2noise_threshold=2, filter_func=None):
+         self.video      = video
+@@ -47,15 +24,15 @@ class PIV:
+         self.overlap     = overlap
+ 
+         self._to_distance = to_distance
+-        self._to_time     = 1 / fps * 1000
++        self._to_time     = 1 / fps
+ 
+         self.threshold    = sig2noise_threshold
+         self.filter_func  = filter_func if filter_func != None else lambda x: np.zeros_like(x)
+ 
+         self.x, self.y   = self._generate_coordinates()
+ 
+-    @_saveable("_save")
+-    @_animatable("_animate")
++    @saveable("_save")
++    @animatable("_animate")
+     def run(self, start=0, stop=None, step=1):
+         stop = len(self.video) - self.interval if stop == None else stop
+         for frame_index in range(start, stop, step):
+@@ -142,28 +119,28 @@ class PIV:
+         return x * self._to_distance, y * self._to_distance
+ 
+     def _save(self, gen, save_at):
+-        f    = h5py.File(str(save_at) + ".hdf5", "w")
+-        f.create_dataset("x", data=self.x)
+-        f.create_dataset("y", data=self.y)
+-        us = f.create_dataset("u [m/s]", shape=(0, *self.x.shape), maxshape=(len(self.video), *self.x.shape))
+-        vs = f.create_dataset("v [m/s]", shape=(0, *self.x.shape), maxshape=(len(self.video), *self.x.shape))  
+-        ts = f.create_dataset(  "t [ms]", shape=(0, 1), maxshape=(len(self.video), 1))
+-    
+-        i = 0
+-        for t, u, v in gen:
+-            us.resize(i+1, axis=0)
+-            vs.resize(i+1, axis=0)
+-            ts.resize(i+1, axis=0)
+-
+-            us[i] = u
+-            vs[i] = v
+-            ts[i] = t
++        length = len(self.video)
++        shape  = self.x.shape
++        with h5py.File(str(save_at) + ".hdf5", "w") as f:
++            f.create_dataset("x [m]", data=self.x)
++            f.create_dataset("y [m]", data=self.y)
++            us = f.create_dataset("u [m/s]", shape=(0, *shape), maxshape=(length, *shape), chunks=(1, *shape))
++            vs = f.create_dataset("v [m/s]", shape=(0, *shape), maxshape=(length, *shape), chunks=(1, *shape))  
++            ts = f.create_dataset("t [s]", shape=(0, 1), maxshape=(length, 1), dtype=np.float64)
++        
++            i = 0
++            for t, u, v in gen:
++                us.resize(i+1, axis=0)
++                vs.resize(i+1, axis=0)
++                ts.resize(i+1, axis=0)
+ 
+-            i += 1
++                us[i] = u
++                vs[i] = v
++                ts[i] = t
+ 
+-            yield t, u, v
++                i += 1
+ 
+-        return None
++                yield t, u, v
+ 
+     def _animate(self, gen):
+         plt.ion()
+@@ -172,7 +149,7 @@ class PIV:
+         for t, u, v in gen:
+             ax.clear()
+ 
+-            ax.set_title(f"{t} ms")
++            ax.set_title(f"{t} s")
+             self.plot(u, v, ax=ax)
+ 
+             fig.canvas.draw()
