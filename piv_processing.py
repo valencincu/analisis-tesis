@@ -1,19 +1,19 @@
 from datetime import datetime
-
-from matplotlib import use as matplotlib_backend
-matplotlib_backend("TkAgg")
-
-import numpy as np
-import matplotlib.pyplot as plt
-
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
+import scienceplots
+from matplotlib import use as matplotlib_backend
 from tqdm import tqdm
 
 from pyaux.output_config import create_output_directory, write_analysis_notes
-from pydata.video import Video
 from pydata.roi import ROI
-from pypiv.piv import PIV, generate_background, validation, preprocess
+from pydata.video import Video
+from pypiv.piv import PIV, generate_background, preprocess, validation
+
+matplotlib_backend("TkAgg")
+plt.style.use('science')
 
 # --------------------------------------------------------------------------
 # CONSTANTS

@@ -1,21 +1,18 @@
 from datetime import datetime
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots
-
-from pathlib import Path
 from matplotlib import use as matplotlib_backend
 from tqdm import tqdm
 
-from pyfcd.layer import Layer, refractive_indexes
-from pyfcd.fcd import FCD, find_reference_image
-
-from pydata.video import Video
-from pydata.roi import ROI
-from pydata.image import *
-
 from pyaux.output_config import create_output_directory, write_analysis_notes
+from pydata.image import *
+from pydata.roi import ROI
+from pydata.video import Video
+from pyfcd.fcd import FCD, find_reference_image
+from pyfcd.layer import Layer, refractive_indexes
 
 matplotlib_backend("TkAgg")
 plt.style.use('science')

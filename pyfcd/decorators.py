@@ -1,5 +1,6 @@
 import functools
 
+
 def animatable(animate_func):
     def decorator(f):
         @functools.wraps(f)

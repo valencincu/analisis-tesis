@@ -14,6 +14,7 @@ class HeightMap:
         self.x = x
         self.y = y
 
+
     def plot_phases(self, fig=None, axs=None, show=True):
         if fig is None:
             fig, axs = plt.subplots(1, 2)
@@ -33,6 +34,7 @@ class HeightMap:
         if show: plt.show()
         return fig
 
+
     def plot_map(self, fig=None, ax=None, show=True):
 
         if fig is None:
@@ -50,6 +52,7 @@ class HeightMap:
         if show: plt.show()
         return fig
 
+
     def plot_slice(self, x_index=None, y_index=None, show=True):
         if (x_index is None) == (y_index is None):
             raise ValueError("Provide exactly one of x_index or y_index.")
@@ -65,6 +68,7 @@ class HeightMap:
 
             axs[0].axhline(0, linestyle="--", linewidth=2, color="white")
             axs[1].plot(axis * 1e3, sliced * 1e3)
+
 
         else:
             sliced = self.values[:,x_index]

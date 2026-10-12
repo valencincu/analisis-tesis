@@ -66,6 +66,7 @@ class PIV:
         )
         self.x, self.y    = self._generate_coordinates()
 
+
     @saveable("_save")
     @animatable("_animate")
     def run(self, start=0, stop=None, step=1):
@@ -116,6 +117,7 @@ class PIV:
 
         return u4, v4
 
+
     def compare_frames(self, frame_index, ax=None, show=True):
         first_frame  = self.video[frame_index] 
         second_frame = self.video[frame_index + self.interval] 
@@ -135,6 +137,7 @@ class PIV:
         else:
             return ax
 
+
     def plot(self, u, v, background=None, ax=None, scale=None, show=False):
         if ax is None:
             _, ax = plt.subplots(dpi=100)
@@ -147,11 +150,13 @@ class PIV:
         if show: plt.show()
         return ax
 
+
     def _generate_coordinates(self):
         x, y = get_coordinates(image_size=self.image_size, 
                                          search_area_size=self.search_size, 
                                          overlap=self.overlap)
         return x * self._to_distance, y * self._to_distance
+
 
     def _save(self, gen, save_at):
         length = len(self.video)
@@ -177,6 +182,7 @@ class PIV:
                 i += 1
 
                 yield t, u, v
+
 
     def _animate(self, gen):
         plt.ion()

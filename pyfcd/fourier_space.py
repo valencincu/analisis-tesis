@@ -14,12 +14,12 @@ def wavenumber_meshgrid(shape, calibration_factor=1, shifted=True):
     return np.meshgrid(k_rows, k_cols, indexing='ij')
 
 
-def remove_degeneracy(kx, ky, shape):
+def filter_nyquist_artifacts(kx, ky, shape):
     if shape[1] % 2 == 0:
-        kx[:, shape[1]//2+1] = 0  # Remove degeneracy at kx=Nx/2 leading to imaginary part.
+        kx[:, shape[1] // 2] = 0  # Remove degeneracy at kx=Nx/2 leading to imaginary part.
 
     if shape[0] % 2 == 0:
-        ky[shape[0]//2+1, :] = 0  # Remove degeneracy at ky=Ny/2 leading to imaginary part.
+        ky[shape[0] // 2, :] = 0  # Remove degeneracy at ky=Ny/2 leading to imaginary part.
 
 
 def pixels_to_wavenumbers(image_shape, locations, calibration_factor=1):
@@ -35,11 +35,12 @@ def pixels_to_wavenumbers(image_shape, locations, calibration_factor=1):
 
 
 def integrate_gradient(gradient_x, gradient_y, calibration_factor=1): 
-    ky, kx = wavenumber_meshgrid(gradient_x.shape, calibration_factor,shifted=False)  
+    ky, kx = wavenumber_meshgrid(gradient_x.shape, calibration_factor, shifted=False)  
+    
     k2 = kx ** 2 + ky ** 2
     k2[0, 0] = 1
-
-    remove_degeneracy(kx, ky, gradient_x.shape)
+    
+    filter_nyquist_artifacts(kx, ky, gradient_x.shape)
 
     gradient_x_hat, gradient_y_hat = fft2(gradient_x), fft2(gradient_y)
     integrated_hat = (-1.0j * kx * gradient_x_hat + -1.0j * ky * gradient_y_hat) / k2
@@ -53,8 +54,8 @@ def find_peak_locations(image, threshold, no_peaks):
     # make the borders false
     blob_image[0] *= False
     blob_image[-1] *= False
-    blob_image[..., 0] *= False
-    blob_image[..., -1] *= False
+    blob_image[...,0] *= False
+    blob_image[...,-1] *= False
 
     blob_data = regionprops(label(blob_image.astype(np.uint8)))
 
@@ -92,3 +93,33 @@ def find_carrier_peaks(image):
     perpendicular_peak = min(peak_locations, key=alignment)
 
     return rightmost_peak, perpendicular_peak
+
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
+    shape=(12, 9)
+
+    ky, kx = wavenumber_meshgrid(shape, shifted=False)
+
+    fig, axs = plt.subplots(1, 2)
+
+    im1 = axs[0].pcolormesh(kx, ky, kx)
+    plt.colorbar(im1)
+    im2 = axs[1].pcolormesh(kx, ky, ky)
+    plt.colorbar(im2)
+
+    plt.show()
+
+    filter_nyquist_artifacts(kx, ky, shape)
+
+    fig, axs = plt.subplots(1, 2)
+
+    im1 = axs[0].pcolormesh(kx, ky, kx)
+    plt.colorbar(im1)
+    im2 = axs[1].pcolormesh(kx, ky, ky)
+    plt.colorbar(im2)
+
+    axs[0].grid()
+    axs[1].grid()
+    plt.show()
