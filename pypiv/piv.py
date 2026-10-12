@@ -1,40 +1,75 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import functools
 import h5py
 
 from openpiv.filters import replace_outliers
 from openpiv.pyprocess import extended_search_area_piv, get_coordinates
 from openpiv import preprocess
 from openpiv import validation
-from pyaux.helpers import animatable, saveable
+
+from pypiv.decorators import animatable, saveable
 
 from matplotlib import use as matplotlib_backend
 matplotlib_backend("TkAgg")
 
-class PIV:
-    def __init__(self, video, fps, interval=1, window_size=16, search_size=20, overlap=8, to_distance=1, sig2noise_threshold=2, filter_func=None):
-        self.video      = video
-        self.fps        = fps
-        self.interval   = interval
-        self.image_size = self.video[0].shape
+# --------------------------------------------------------------------------
+# CONSTANTS
+# --------------------------------------------------------------------------
 
-        self.window_size = window_size
-        self.search_size = search_size
-        self.overlap     = overlap
+DEFAULT_INTERVAL = 1
+DEFAULT_WINDOW_SIZE = 16
+DEFAULT_SEARCH_SIZE = 20
+DEFAULT_OVERLAP = 8
+DEFAULT_TO_DISTANCE = 1
+DEFAULT_SIG2NOISE_THRESHOLD = 2
+OUTLIER_REPLACEMENT_MAX_ITER = 10
+OUTLIER_REPLACEMENT_KERNEL_SIZE = 2
+
+# --------------------------------------------------------------------------
+# AUXILIARY FUNCTIONS
+# --------------------------------------------------------------------------
+
+def generate_background(video, start=0, stop=None, step=1):
+    stop = len(video) if stop is None else stop
+
+    background = np.zeros(video[0].shape, dtype=np.float64)
+    n_frames = 0
+
+    for i in range(start, stop, step):
+        background += video[i].astype(np.float64)
+        n_frames += 1
+
+    return (background / n_frames) if n_frames != 0 else background
+
+# --------------------------------------------------------------------------
+# PIV CLASS
+# --------------------------------------------------------------------------
+
+class PIV:
+    def __init__(self, video, fps, interval=DEFAULT_INTERVAL, window_size=DEFAULT_WINDOW_SIZE, search_size=DEFAULT_SEARCH_SIZE, overlap=DEFAULT_OVERLAP, to_distance=DEFAULT_TO_DISTANCE, sig2noise_threshold=DEFAULT_SIG2NOISE_THRESHOLD, filter_func=None):
+        self.video        = video
+        self.fps          = fps
+        self.interval     = interval
+        self.image_size   = self.video[0].shape
+
+        self.window_size  = window_size
+        self.search_size  = search_size
+        self.overlap      = overlap
 
         self._to_distance = to_distance
         self._to_time     = 1 / fps
 
         self.threshold    = sig2noise_threshold
-        self.filter_func  = filter_func if filter_func != None else lambda x: np.zeros_like(x)
-
-        self.x, self.y   = self._generate_coordinates()
+        self.filter_func  = (
+            filter_func if filter_func is not None 
+            else lambda x, y: [np.zeros_like(x), np.zeros_like(y)]
+        )
+        self.x, self.y    = self._generate_coordinates()
 
     @saveable("_save")
     @animatable("_animate")
     def run(self, start=0, stop=None, step=1):
-        stop = len(self.video) - self.interval if stop == None else stop
+        stop = len(self.video) - self.interval if stop is None else stop
         for frame_index in range(start, stop, step):
             u, v = self.velocity_field(frame_index, show=False)
             yield frame_index * self._to_time, u, v
@@ -59,8 +94,8 @@ class PIV:
             u1, v1,
             flags_s2n,
             method='localmean',
-            max_iter=10,
-            kernel_size=2,
+            max_iter=OUTLIER_REPLACEMENT_MAX_ITER,
+            kernel_size=OUTLIER_REPLACEMENT_KERNEL_SIZE,
         )
 
         flags_extra = self.filter_func(u2, v2)
@@ -69,8 +104,8 @@ class PIV:
             u2, v2,
             flags_extra,
             method='distance',
-            max_iter=10,
-            kernel_size=2,
+            max_iter=OUTLIER_REPLACEMENT_MAX_ITER,
+            kernel_size=OUTLIER_REPLACEMENT_KERNEL_SIZE,
         )
 
         u4, v4 = u3 * self._to_distance , v3 * self._to_distance
@@ -101,7 +136,7 @@ class PIV:
             return ax
 
     def plot(self, u, v, background=None, ax=None, scale=None, show=False):
-        if ax == None:
+        if ax is None:
             _, ax = plt.subplots(dpi=100)
         if background is not None:
             ax.pcolormesh(background, cmap="gray", rasterized=True)
@@ -122,12 +157,13 @@ class PIV:
         length = len(self.video)
         shape  = self.x.shape
         with h5py.File(str(save_at) + ".hdf5", "w") as f:
+            f.create_dataset("calibration_factor [m]", data=self._to_distance, dtype=np.float64)
             f.create_dataset("x [m]", data=self.x)
             f.create_dataset("y [m]", data=self.y)
-            us = f.create_dataset("u [m/s]", shape=(0, *shape), maxshape=(length, *shape), chunks=(1, *shape))
-            vs = f.create_dataset("v [m/s]", shape=(0, *shape), maxshape=(length, *shape), chunks=(1, *shape))  
+            us = f.create_dataset("u [m per s]", shape=(0, *shape), maxshape=(length, *shape), chunks=(1, *shape))
+            vs = f.create_dataset("v [m per s]", shape=(0, *shape), maxshape=(length, *shape), chunks=(1, *shape))  
             ts = f.create_dataset("t [s]", shape=(0,), maxshape=(length,), dtype=np.float64)
-        
+
             i = 0
             for t, u, v in gen:
                 us.resize(i+1, axis=0)
@@ -154,23 +190,10 @@ class PIV:
 
             fig.canvas.draw()
             fig.canvas.flush_events()
-            plt.pause(0.001)
 
             yield t, u, v
 
         plt.ioff()
-
-def generate_background(video, start=0, stop=None, step=1):
-    stop = len(video) if stop == None else stop
-
-    background = np.zeros(video[0].shape, dtype=np.float64)
-    N = 0
-
-    for i in range(start, stop, step):
-        background += video[i].astype(np.float64)
-        N += 1
-
-    return (background / N) if N != 0 else background
     
 if __name__ == "__main__":
     from pydata.video import Video

@@ -100,7 +100,8 @@ class Video:
         return metadata
 
     def __get_frames(self):
-        return [file for file in os.listdir(self.directory_path) if file.endswith(allowed_formats)]
+        return [file for file in os.listdir(self.directory_path) 
+                if file.endswith(allowed_formats)]
 
     def _frame_path(self, frame_index=None):
         frame_index = frame_index if frame_index is not None else self._current_frame_index

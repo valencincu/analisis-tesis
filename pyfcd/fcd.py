@@ -5,38 +5,77 @@ import h5py
 from matplotlib.colors import LogNorm
 from scipy.fft import fft2, fftshift, ifft2, ifftshift
 from skimage.restoration import unwrap_phase
+from itertools import chain
 
 import pyfcd.fourier_space as fourier_space
 from pyfcd.height_map import HeightMap
 from pyfcd.carriers import Carrier
+from pyfcd.decorators import animatable, saveable
 
-from pyaux.helpers import animatable, saveable
+# --------------------------------------------------------------------------
+# CONSTANTS
+# --------------------------------------------------------------------------
+
+DEFAULT_CALIBRATION_FACTOR = 1.0
+DEFAULT_HEIGHT_MAP_VMIN = -5e-3
+DEFAULT_HEIGHT_MAP_VMAX = 5e-3
+ALLOWED_FORMATS = ("jpg", "png", "tiff", "bmp", "npy", "tif")
+
+# --------------------------------------------------------------------------
+# AUXILIARY FUNCTIONS
+# --------------------------------------------------------------------------
+
+def find_reference_image(import_dir):
+    filename_list = chain(*[list(import_dir.glob(f"*.{extension}")) for extension in ALLOWED_FORMATS])
+    print(filename_list)
+    for filename in filename_list:
+        if "ref" in str(filename).lower():
+            return filename
+
+# --------------------------------------------------------------------------
+# FCD CLASS
+# --------------------------------------------------------------------------
 
 class FCD:
-    def __init__(self, reference_image, *, effective_height=1, calibration_factor=None, square_size=None):
-        self._reference_image   = reference_image.astype(np.float32)
+    def __init__(self, 
+                 reference_image, 
+                 *, 
+                 effective_height=1, 
+                 calibration_factor=None, 
+                 square_size=None):
+        
+        self._reference_image = reference_image.astype(np.float32)
 
-        self._square_size       = square_size
+        self._square_size = square_size
         self._effective_height  = effective_height
         self.calibration_factor = calibration_factor
 
-        self._peaks             = self._find_carrier_peaks()
-        self.calibration_factor = self._determine_calibration_factor(self._peaks) if self.calibration_factor == None else self.calibration_factor
-        self._carriers          = self._build_carriers()
+        self._peaks = self._find_carrier_peaks()
+
+        self.calibration_factor = (
+            self._determine_calibration_factor(self._peaks)
+            if self.calibration_factor is None
+            else self.calibration_factor
+        )
         
-        self.x, self.y   = self._generate_coordinates(self.calibration_factor)
+        self._carriers = self._build_carriers()
+        self.x, self.y = self._generate_coordinates(self.calibration_factor)
+
 
     @property
     def reference_image(self):
         return self._reference_image
 
+
     @property
     def carriers(self):
         return self._carriers
 
+
     @property
     def effective_height(self):
         return self._effective_height
+
 
     def analyze(self, displaced_image, unwrap=True, full_output=True, fixed_loc=None, fixed_val=0):
         displaced_image_fft = self._fft_image(displaced_image)
@@ -50,21 +89,33 @@ class FCD:
 
         return HeightMap(self.x, self.y, height_map, phases, self.calibration_factor) if full_output else height_map
 
+
     @saveable("_save")
     @animatable("_animate")
-    def analyze_series(self, displaced_series, fps=1, start=0, stop=None, step=1, unwrap=True, fixed_loc=None, fixed_val=0):
-        stop = len(displaced_series) if stop == None else stop
+    def analyze_series(
+        self,
+        displaced_series,
+        fps=1,
+        start=0,
+        stop=None,
+        step=1,
+        unwrap=True,
+        fixed_loc=None,
+        fixed_val=0,
+    ):
+        stop = len(displaced_series) if stop is None else stop
 
         for i in range(start, stop, step):
             displaced_image = displaced_series[i]
             height_map = self.analyze(
-                displaced_image, 
-                unwrap=unwrap, 
-                full_output=False, 
+                displaced_image,
+                unwrap=unwrap,
+                full_output=False,
                 fixed_loc=fixed_loc,
-                fixed_val=fixed_val
+                fixed_val=fixed_val,
             )
             yield i / fps, displaced_image, height_map
+
 
     def plot_carriers(self, show=True):
         fig, ax = plt.subplots()
@@ -76,6 +127,7 @@ class FCD:
         ax.axis("off")
         if show: plt.show()
         return fig
+
 
     def plot_fft(self, displaced_image, show=True):
         fig, axs = plt.subplots(1, 2)
@@ -105,18 +157,21 @@ class FCD:
         if show: plt.show()
         return fig, axs
 
+
     def _generate_coordinates(self, calibration_factor):
         len_y, len_x = self.reference_image.shape
         x = np.arange(len_x) * calibration_factor
         y = np.arange(len_y) * calibration_factor
         return np.meshgrid(x, y)
 
+
     def _find_carrier_peaks(self):
         return fourier_space.find_carrier_peaks(self._reference_image)
 
+
     def _determine_calibration_factor(self, peaks):
         if self._square_size is None:
-            return 1
+            return DEFAULT_CALIBRATION_FACTOR
         
         checkerboard_frequencies_px = fourier_space.pixels_to_wavenumbers(
             self._reference_image.shape,
@@ -128,11 +183,16 @@ class FCD:
 
         return checkerboard_wavelength_m / checkerboard_wavelength_px
 
+
     def _build_carriers(self):
         peaks = self._peaks
         peak_radius = np.linalg.norm(peaks[0] - peaks[1]) / 2
 
-        return [Carrier(self._reference_image, self.calibration_factor, peak, peak_radius) for peak in peaks]
+        return [
+            Carrier(self._reference_image, self.calibration_factor, peak, peak_radius)
+            for peak in peaks
+        ]
+
 
     def _find_phases(self, displaced_image_fft, unwrap): 
         phases = np.zeros((2, *displaced_image_fft.shape))
@@ -141,14 +201,19 @@ class FCD:
             phases[i] = unwrap_phase(angles) if unwrap else angles
         return phases
 
+
     def _find_displacement_field(self, phases):
         det_a = self._carriers[0].frequencies[1] * self._carriers[1].frequencies[0] - \
                 self._carriers[0].frequencies[0] * self._carriers[1].frequencies[1]
         
-        u = (self._carriers[1].frequencies[0] * phases[0] - self._carriers[0].frequencies[0] * phases[1]) / det_a
-        v = (self._carriers[0].frequencies[1] * phases[1] - self._carriers[1].frequencies[1] * phases[0]) / det_a
+        u = (self._carriers[1].frequencies[0] * phases[0] -
+             self._carriers[0].frequencies[0] * phases[1]) / det_a
+        
+        v = (self._carriers[0].frequencies[1] * phases[1] -
+             self._carriers[1].frequencies[1] * phases[0]) / det_a
 
         return np.array([u, v])
+
 
     def _fft_image(self, image):
         return fftshift(fft2(image - np.mean(image)))
@@ -177,12 +242,13 @@ class FCD:
 
                 yield t, i_def, height_map
 
-    def _animate(self, gen, vmin=-5e-3, vmax=5e-3):
+
+    def _animate(self, gen, vmin=DEFAULT_HEIGHT_MAP_VMIN, vmax=DEFAULT_HEIGHT_MAP_VMAX):
         plt.ion()
         fig, axs = plt.subplots(1, 2, figsize=(7.5, 3), dpi=150)
         fig.tight_layout(pad=2)
 
-        title = plt.suptitle('')
+        title = plt.suptitle("")
 
         for t, i_def, height_map in gen:
             axs[0].clear()
@@ -194,7 +260,6 @@ class FCD:
 
             fig.canvas.draw()
             fig.canvas.flush_events()
-            plt.pause(0.001)
 
             yield t, i_def, height_map
 

@@ -35,11 +35,11 @@ fig, ax = plt.subplots()
 title = plt.suptitle("")
 for i, frame in enumerate(height_maps):
     ax.clear()
-    ax.imshow(frame, cmap="RdBu", vmin=-5e-3, vmax=5e-3)
+    ax.imshow(frame, cmap="RdBu", vmin=-4e-3, vmax=4e-3)
     ax.set_xlim(0, shape[0])
     ax.set_ylim(0, shape[0])
     title.set_text(f"{ts[i]*1000} ms")
-    plt.savefig(f"gif/{i:04}.png",dpi=150)
+    plt.savefig(f"gif/{i:04}.png",dpi=100)
     fig.canvas.draw()
     fig.canvas.flush_events()  
 
