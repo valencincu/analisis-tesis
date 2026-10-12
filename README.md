@@ -10,7 +10,7 @@ Python code to perform PIV analysis. Mostly wraps around openpiv functions.
 
 Functions for image processing and video processing. Most of the code was inherited from: https://github.com/trapped-modes-ltg/fcd-analysis
 
-## Aux
+## aux
 
 Miscelaneous functions to create gifs, average images, etc.
 
