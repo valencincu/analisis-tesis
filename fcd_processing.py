@@ -15,7 +15,7 @@ from pyfcd.fcd import FCD, find_reference_image
 from pyfcd.layer import Layer, refractive_indexes
 
 matplotlib_backend("TkAgg")
-plt.style.use('science')
+plt.style.use("science")
 
 # --------------------------------------------------------------------------
 # CONSTANTS
@@ -27,11 +27,24 @@ AIR_LAYER_THICKNESS = 2.2e-2
 GLASS_LAYER_THICKNESS = 0.5e-2
 WATER_LAYER_THICKNESS = 8.1e-2
 ANALYSIS_STEP = 4
-FFT_SAVE_DPI = 200
+
+# --------------------------------------------------------------------------
+# SELECT VIDEO AND REFERENCE
+# --------------------------------------------------------------------------
+
+video = Video()
+reference = Image(image_path=find_reference_image(video.directory_path.parent))
+
+roi = ROI(video[0], select=True).square()
+
+reference = reference.cropped(roi=roi)
+video.preprocess = lambda frame: frame.cropped(roi=roi)
 
 # --------------------------------------------------------------------------
 # PHYSICAL CONFIG
 # --------------------------------------------------------------------------
+
+H  = PATTERN_CAMERA_DISTANCE
 
 layers = [
     Layer(AIR_LAYER_THICKNESS, "Air"),
@@ -39,7 +52,6 @@ layers = [
     Layer(WATER_LAYER_THICKNESS, "Water"),
 ]
 
-H  = PATTERN_CAMERA_DISTANCE
 hp =  np.sum([
     layer.effective_height(refractive_indexes["Water"]) 
     for layer in layers
@@ -52,16 +64,8 @@ alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
 effective_height =  (1 / (alpha*hp) - 1 / H)**(-1)
 
 # --------------------------------------------------------------------------
-# VIDEO AND REFERENCE SETUP
+# FCD CONFIGURATION
 # --------------------------------------------------------------------------
-
-video = Video()
-reference = Image(image_path=find_reference_image(video.directory_path.parent))
-
-roi = ROI(video[0], select=True).square()
-
-reference = reference.cropped(roi=roi)
-video.preprocess = lambda frame: frame.cropped(roi=roi)
 
 fcd = FCD(reference, square_size=effective_square_size, effective_height=effective_height)
 
@@ -80,24 +84,28 @@ path_dictionary = {
 }
 
 parameter_dictionary = {
-    'ROI': roi, 
-    'effective_height': effective_height, 
-    'calibration_factor': fcd.calibration_factor,
-    'parallax_correction': parallax_correction,
-    'original_fps': video.fps,
-    'step': ANALYSIS_STEP
+    "ROI": roi, 
+    "effective_height": effective_height, 
+    "calibration_factor": fcd.calibration_factor,
+    "parallax_correction": parallax_correction,
+    "original_fps": video.fps,
+    "step": ANALYSIS_STEP
 }
 
 save_dir, notes_path = create_output_directory(video, video.directory_path.parent, output_root)
 write_analysis_notes(path_dictionary, parameter_dictionary, notes_path)
 
 # --------------------------------------------------------------------------
-# FCD RUN
+# CHECK: Plot FFT with carriers
 # --------------------------------------------------------------------------
 
 fig,_ = fcd.plot_fft(video[0])
-fig.savefig(save_dir/"fft.pdf", dpi=200)
+fig.savefig(save_dir / "fft.pdf", dpi=200)
 plt.show()
+
+# --------------------------------------------------------------------------
+# RUN
+# --------------------------------------------------------------------------
 
 results = fcd.analyze_series(
     video, 

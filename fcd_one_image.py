@@ -1,64 +1,86 @@
-#%% SELECT DATA DIRECTORY
 import os
+from pathlib import Path
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots
-
 from matplotlib import use as matplotlib_backend
 
-from pyfcd.layer import Layer, refractive_indexes
-from pyfcd.fcd import FCD
-
-from pydata.video import Video
+from pydata.image import Image
 from pydata.roi import ROI
-from pydata.image import *
+from pyfcd.fcd import FCD
+from pyfcd.layer import Layer, refractive_indexes
+
 matplotlib_backend("TkAgg")
 plt.style.use("science")
 
-# %% SELECT FILES
+# --------------------------------------------------------------------------
+# CONSTANTS
+# --------------------------------------------------------------------------
+
+SQUARE_SIZE = 2e-3
+PATTERN_CAMERA_DISTANCE = 80e-2
+AIR_LAYER_THICKNESS = 2.2e-2
+GLASS_LAYER_THICKNESS = 0.5e-2
+WATER_LAYER_THICKNESS = 8.1e-2
+ANALYSIS_STEP = 4
+
+# --------------------------------------------------------------------------
+# SELECT DISPLACED AND REFERENCE IMAGES
+# --------------------------------------------------------------------------
+
 Tk().withdraw() 
-displaced_image_path = Path(askopenfilename(title="Select deformed image"))
+displaced_image_path = Path(askopenfilename(title="Select displaced image"))
 reference_image_path = Path(askopenfilename(title="Select reference image"))
+displaced_image = Image(image_path=displaced_image_path)
+reference_image = Image(image_path=reference_image_path)
 print("Displaced image path:", displaced_image_path)
 print("Reference image path:", reference_image_path)
 
-# %% VIDEO & REFERENCE SETUP, ROI SELECTION
-displaced_image = Image(image_path=displaced_image_path)
-reference_image = Image(image_path=reference_image_path)
-roi             = ROI(displaced_image, select=True).square()
+# select ROI
+roi = ROI(displaced_image, select=True).square()
 
-# %% PHYSICAL PARAMETERS
-alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
+# --------------------------------------------------------------------------
+# PHYSICAL CONFIG
+# --------------------------------------------------------------------------
 
-H  = 80e-2  # m (distance between camera and pattern)
+H  = PATTERN_CAMERA_DISTANCE
 
 layers = [
-    Layer(2.2e-2, "Air"), 
-    Layer(0.5e-2, "Glass"), 
-    Layer(8.1e-2, "Water")
+    Layer(AIR_LAYER_THICKNESS, "Air"),
+    Layer(GLASS_LAYER_THICKNESS, "Glass"),
+    Layer(WATER_LAYER_THICKNESS, "Water"),
 ]
 
-hp =  np.sum([layer.effective_height(refractive_indexes["Water"]) for layer in layers])
+hp =  np.sum([
+    layer.effective_height(refractive_indexes["Water"]) 
+    for layer in layers
+])
 
-parallax_correction = (1 - hp / H)
-square_size = 2e-3 * parallax_correction # m
-effective_height =  1 / (1 / (alpha*hp) - 1 / H)
+parallax_correction = (1 - hp / H) 
+effective_square_size = SQUARE_SIZE * parallax_correction
 
-# %% FCD SETUP
+alpha = 1 - refractive_indexes["Air"] / refractive_indexes["Water"]
+effective_height =  (1 / (alpha*hp) - 1 / H)**(-1)
+
+# --------------------------------------------------------------------------
+# FCD PROCESSING
+# --------------------------------------------------------------------------
+
 fcd = FCD(
     reference_image.cropped(roi=roi),
-    square_size=square_size, 
+    square_size=effective_square_size, 
     effective_height=effective_height
 )
 
-# %% FCD PROCESSING
 height_field = fcd.analyze(displaced_image.cropped(roi=roi), full_output=False)
 
-# %% PLOT
+# --------------------------------------------------------------------------
+# PLOT
+# --------------------------------------------------------------------------
+
 cm = 1/2.54
 
 x = np.arange(0, height_field.shape[1]) * fcd.calibration_factor
@@ -73,7 +95,7 @@ axs[0].set_aspect("equal")
 
 im = axs[1].pcolormesh(X, Y, height_field*1e3, cmap="RdBu", rasterized=True)
 axs[1].set_aspect("equal")
-plt.colorbar(im, label="Altura [mm]", ax=axs[1], orientation='horizontal')
+plt.colorbar(im, label="Altura [mm]", ax=axs[1], orientation="horizontal")
 
 plt.savefig("analyzed" + os.sep + "fcd.pdf", dpi=200)
 plt.show()

@@ -4,6 +4,7 @@ import h5py
 
 from openpiv.filters import replace_outliers
 from openpiv.pyprocess import extended_search_area_piv, get_coordinates
+from openpiv import windef
 from openpiv import preprocess
 from openpiv import validation
 
@@ -118,6 +119,19 @@ class PIV:
         return u4, v4
 
 
+    def plot(self, u, v, background=None, ax=None, scale=None, show=False):
+        if ax is None:
+            _, ax = plt.subplots(dpi=100)
+        if background is not None:
+            ax.pcolormesh(background, cmap="gray", rasterized=True)
+            
+        ax.quiver(self.x, self.y, u, v, scale=scale)
+        ax.set_aspect('equal')
+        
+        if show: plt.show()
+        return ax
+    
+
     def compare_frames(self, frame_index, ax=None, show=True):
         first_frame  = self.video[frame_index] 
         second_frame = self.video[frame_index + self.interval] 
@@ -137,18 +151,10 @@ class PIV:
         else:
             return ax
 
-
-    def plot(self, u, v, background=None, ax=None, scale=None, show=False):
-        if ax is None:
-            _, ax = plt.subplots(dpi=100)
-        if background is not None:
-            ax.pcolormesh(background, cmap="gray", rasterized=True)
-            
-        ax.quiver(self.x, self.y, u, v, scale=scale)
-        ax.set_aspect('equal')
-        
-        if show: plt.show()
-        return ax
+    
+    def histogram(u, v, **histogram2d_kwargs):
+        hist, x_edges, y_edges = np.histogram2d(u, v, **histogram2d_kwargs)
+        return hist, x_edges, y_edges
 
 
     def _generate_coordinates(self):

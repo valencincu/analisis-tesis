@@ -41,15 +41,6 @@ FILTER_NEIGHBORHOOD = 2
 video = Video()
 
 # --------------------------------------------------------------------------
-# EXPORT PATH SETUP
-# --------------------------------------------------------------------------
-
-script_path  = Path(__file__).resolve()
-date_tag = datetime.now().strftime("%Y_%m_%d")
-output_root = script_path.parent / "processed" / "piv" / date_tag
-save_dir, notes_path = create_output_directory(video, video.directory_path, output_root)
-
-# --------------------------------------------------------------------------
 # PREPROCESS
 # --------------------------------------------------------------------------
 
@@ -97,11 +88,34 @@ piv = PIV(
     filter_func=filter_func,
 )
 
+# --------------------------------------------------------------------------
+# SAVE CONFIG
+# --------------------------------------------------------------------------
+
+script_path  = Path(__file__).resolve()
+date_tag = datetime.now().strftime("%Y_%m_%d")
+output_root = script_path.parent / "processed" / "piv" / date_tag
+save_dir, notes_path = create_output_directory(video, video.directory_path, output_root)
+
 path_dictionary = {
     "video_path": str(video.directory_path.resolve()),
     "script_path": str(Path(__file__).resolve()),
 }
 write_analysis_notes(path_dictionary, {'roi': roi, 'original_fps': video.fps, 'step': DEFAULT_STEP}, notes_path)
+
+# --------------------------------------------------------------------------
+# CHECK: PLOT ORIGINAL AND PREPROCESSED FIRST FRAME
+# --------------------------------------------------------------------------
+
+fig, axs = plt.subplots(1, 2)
+axs[0].set_title("Original")
+axs[0].imshow(first_frame)
+
+axs[1].set_title("Preprocessed")
+axs[1].imshow(video[0])
+
+fig.savefig(save_dir/"preprocessing.pdf", dpi=200)
+plt.show()
 
 # --------------------------------------------------------------------------
 # CHECK: COMPARE CONSECUTIVE FRAMES

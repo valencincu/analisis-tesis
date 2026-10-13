@@ -130,9 +130,21 @@ class Image(np.ndarray):
         return (self.max() - self) + self.min()
 
 
-    def histogram(self):
-        pass
+    def histogram(self, show=True, color='k', **histogram_kwargs):
+        hist, bin_edges = np.histogram(self, **histogram_kwargs)
 
+        _, ax = plt.subplots()
+
+        ax.stairs(hist, bin_edges, color=color)
+
+        if show:
+            ax.set_xlabel("Value")
+            ax.set_ylabel("Frequency density")
+            plt.show()
+        
+        else:
+            return ax
+        
 
     def show(self, axis=None, show_plot=True):
         if axis is None:
@@ -175,7 +187,6 @@ def _tukey_window(image, x_factor=0.2, y_factor=False):
 
 
 if __name__ == '__main__': 
-    image = Image(image_path='/home/valencincu/Facultad/L6y7/trapped-modes-ltg/laboratorio/datos/29_10/impulso_1_chico_202410_1024/impulso_1_chico_202410_1024000006.bmp')
+    image = Image()
     image.show()
-    image = image.masked().cropped((1, 1, 10, 10))
-    image.show()
+    image.histogram(density=True, bins=255)
