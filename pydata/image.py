@@ -8,6 +8,7 @@ from scipy.signal.windows import tukey
 from skimage.feature import canny
 from skimage.filters import butterworth, gaussian
 from skimage.transform import rotate, warp_polar
+from skimage.exposure import rescale_intensity
 
 from pydata.roi import ROI
 
@@ -15,11 +16,14 @@ from pydata.roi import ROI
 class Image(np.ndarray):
     def __new__(cls, image=None, image_path=None):
         if image is None:
-            image_path = image_path if image_path is not None else Path(filedialog.askopenfilename(title='Select image path'))
+            image_path = (
+                Path(filedialog.askopenfilename(title='Select image path'))
+                if image_path is None else Path(image_path)
+            )
             image = _read_image(image_path)
 
         result = np.asarray(image).view(cls)
-        result._path = image_path if image_path is not None else getattr(image, '_path', None)
+        result._path = getattr(image, '_path', None) if image_path is None else Path(image_path)
         return result
 
 
@@ -35,7 +39,7 @@ class Image(np.ndarray):
 
 
     def windowed(self, x_factor=0, y_factor=False):
-        windowed = self * _tukey_window(self, x_factor=x_factor, y_factor=y_factor)(self)
+        windowed = self * _tukey_window(x_factor=x_factor, y_factor=y_factor)(self)
         return Image(windowed, image_path=self.path)
 
 
@@ -48,31 +52,6 @@ class Image(np.ndarray):
             return Image(cropped, image_path=self.path)
         else:
             return Image(cropped, image_path=self.path), roi
-
-
-    def masked(self, mask=None, background=None, invert=False, sigma=None, return_mask=False):
-        background = background if background is not None else np.zeros_like(self)
-
-        mask = mask if mask is not None else np.ones_like(self)
-        mask = 1-mask if invert else mask
-
-        mask = mask if sigma is None else gaussian(mask, sigma=sigma).astype(np.float32)
-
-        masked = Image(self * mask + background * (1-mask), image_path=self.path)
-        return (mask, masked) if return_mask else masked
-
-
-    def masked_circle(self, radius=None, center=None, background=None, invert=False, sigma=None, return_mask=False): 
-        radius = np.min(self.shape) if radius is None else radius
-        center = np.array(self.shape[::-1])//2 if center is None else center
-        mask = _circle_mask(self, center, radius)
-        return self.masked(mask, background, invert, sigma, return_mask)
-
-
-    def masked_ring(self, radii, center=None, background=None, invert=False, sigma=None, return_mask=False): 
-            center = np.array(self.shape[::-1])//2 if center is None else center
-            mask = np.logical_or(_circle_mask(self, center, radii[0]), 1-_circle_mask(self, center, radii[1]))
-            return self.masked(mask, background, invert, sigma, return_mask)
 
 
     def rotated(self, angle=None, center=None, resize=False):
@@ -100,21 +79,13 @@ class Image(np.ndarray):
         blur = gaussian(self, sigma=sigma).astype(np.float32)
         return Image(blur, image_path=self.path)
 
-
-    def with_sp_noise(self):
-        pass
-
-    
-    def with_gauss_noise(self):
-        pass
-
     
     def edges(self, low=0.7, high=0.98, sigma=5, mask=None):
         edges = canny(self, sigma=sigma, low_threshold=low, high_threshold=high, use_quantiles=True, mask=mask)
         return Image(edges, image_path=self.path)
 
 
-    def correlate(self, template, image=None):
+    def correlate(self, template):
         correlation_map = cv2.matchTemplate(self, template, method=cv2.TM_CCORR_NORMED)
         _, _, _, max_loc = cv2.minMaxLoc(correlation_map)
         return max_loc
@@ -128,6 +99,18 @@ class Image(np.ndarray):
 
     def inverted(self):
         return (self.max() - self) + self.min()
+
+
+    def contrast_stretch(self, lower_limit = 2, upper_limit = 98):
+        if lower_limit < 0:
+            lower_limit = 0
+        if upper_limit > 100:
+            upper_limit = 100
+
+        lower = np.percentile(self, lower_limit)
+        upper = np.percentile(self, upper_limit)
+        img = rescale_intensity(self, in_range=(lower, upper)) #type:ignore
+        return img
 
 
     def histogram(self, show=True, color='k', **histogram_kwargs):
@@ -144,7 +127,19 @@ class Image(np.ndarray):
         
         else:
             return ax
-        
+
+    
+    def masked(self, mask=None, background=None, invert=False, sigma=None, return_mask=False):
+        background = background if background is not None else np.zeros_like(self)
+
+        mask = mask if mask is not None else np.ones_like(self)
+        mask = 1-mask if invert else mask
+
+        mask = mask if sigma is None else gaussian(mask, sigma=sigma).astype(np.float32)
+
+        masked = Image(self * mask + background * (1-mask), image_path=self.path)
+        return (mask, masked) if return_mask else masked
+
 
     def show(self, axis=None, show_plot=True):
         if axis is None:
@@ -156,6 +151,19 @@ class Image(np.ndarray):
     def save(self, filename="image.png", **kwargs): 
         plt.imshow(self)
         plt.savefig(filename, **kwargs)
+
+
+def circle_mask(shape, center=None, radius=None):
+    radius = np.min(shape) if radius is None else radius
+    center = np.array(shape[::-1])//2 if center is None else center
+    y_mesh, x_mesh = np.ogrid[:shape[0], :shape[1]]
+    dist_from_center = np.sqrt((x_mesh - center[0]) ** 2 + (y_mesh - center[1]) ** 2)
+    return dist_from_center < radius
+
+
+def ring_mask(self, radii, center=None, background=None, invert=False, sigma=None, return_mask=False): 
+        mask = np.logical_or(circle_mask(self, center, radii[0]), circle_mask(self, center, radii[1]))
+        return self.masked(mask, background, invert, sigma, return_mask)
 
 
 def _read_image(path):                
@@ -170,13 +178,7 @@ def _read_image(path):
     return image
 
 
-def _circle_mask(image, center, radius):
-    y_mesh, x_mesh = np.ogrid[:image.shape[0], :image.shape[1]]
-    dist_from_center = np.sqrt((x_mesh - center[0]) ** 2 + (y_mesh - center[1]) ** 2)
-    return dist_from_center < radius
-
-
-def _tukey_window(image, x_factor=0.2, y_factor=False): 
+def _tukey_window(x_factor=0.2, y_factor=False): 
     y_factor = y_factor if y_factor else x_factor
     def window_func(image):
         window_1d_x = np.abs(tukey(image.shape[1], x_factor))

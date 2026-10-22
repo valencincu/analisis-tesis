@@ -13,14 +13,17 @@ def create_output_directory(video, import_dir, export_dir):
     
     return save_dir, save_dir / "notes.txt"
 
-def write_analysis_notes(path_dictionary, parameter_dictionary, notes_path):
+def write_analysis_notes(notes_path, path_dictionary, parameter_dictionary, extra=""):
     user_input = input("NOTES:\n")
     notes = f"NOTES:\n{user_input}"
+
     paths = "PATHS\n" + "\n".join(
         f"{name} : {path}" for name, path in path_dictionary.items()
     )
+
     parameters = "PARAMETERS\n" + "\n".join(
         f"{name} : {parameter}" for name, parameter in parameter_dictionary.items()
     )
+    
     script = Path(path_dictionary["script_path"]).resolve().read_text()
-    notes_path.write_text("\n---\n".join((notes, paths, parameters, script)))
+    notes_path.write_text("\n---\n".join((notes, paths, parameters, extra, script)))

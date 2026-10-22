@@ -41,11 +41,17 @@ def video_ifft(freqs, frames_fft, freq_loc=None, sigmas=1):
 
 
 class Video:
-    def __init__(self, directory_path=None, preprocess=lambda x: x):
-        self.directory_path = directory_path if directory_path else Path(filedialog.askdirectory(title="Selecciona una carpeta"))
+    def __init__(self, directory_path=None, preprocess=lambda x: x, has_metadata=True, fps=None):
+        self.directory_path = (
+            Path(filedialog.askdirectory(title="Selecciona una carpeta"))
+            if directory_path is None else Path(directory_path)
+        )
         self._preprocess = preprocess
-        self.metadata = self.__read_metadata()
-        self.fps = float(self.metadata["Record Rate(fps)"])
+        self.metadata = self.__read_metadata() if has_metadata else None
+
+        self.fps = fps
+        if fps is None and has_metadata:
+            self.fps = float(self.metadata["Record Rate(fps)"])
 
         self.frames = sorted(self.__get_frames())
         self.length = len(self.frames)

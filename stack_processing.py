@@ -11,7 +11,7 @@ from pydata.roi import ROI
 from pydata.image import Image
 from pydata.video import Video
 
-from pypiv.piv import generate_background, preprocess
+from pypiv.runner import generate_background, preprocess
 
 # --------------------------------------------------------------------------
 # CONSTANTS
